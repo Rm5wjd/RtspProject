@@ -1,0 +1,18 @@
+# Build directories
+**/build/
+bin/
+*.o
+*.so
+
+# Video files (100MB 넘는 것들 필수 차단)
+*.mp4
+*.h264
+*.avi
+*.mov
+server/*.mp4
+server/*.h264
+
+# Editor settings
+.vscode/
+.idea/
+.DS_Store
