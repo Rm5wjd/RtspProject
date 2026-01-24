@@ -4,7 +4,7 @@ project(SimpleRtspServer)
 set(CMAKE_CXX_STANDARD 17)
 
 # 헤더 경로 추가
-include_directories(src src/net src/media)
+include_directories(src src/net src/media src/utils)
 
 # 모든 소스 파일 포함
 file(GLOB_RECURSE SOURCES "src/*.cpp")
