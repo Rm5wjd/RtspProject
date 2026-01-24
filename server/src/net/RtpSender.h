@@ -1,13 +1,15 @@
 #pragma once
+#include "media/StreamBuffer.h"
 #include <string>
 #include <thread>
 #include <atomic>
 #include <netinet/in.h>
 #include <vector>
+#include <memory>
 
 class RtpSender {
 public:
-    RtpSender();
+    RtpSender(std::shared_ptr<StreamBuffer> streamBuffer);
     ~RtpSender();
 
     bool init(const std::string& ip, int port);
@@ -17,9 +19,6 @@ public:
 private:
     void sendLoop();
     void sendRtpPacket(const uint8_t* data, int size, uint32_t timestamp, bool mark);
-    
-    // NAL Unit 하나를 읽어오는 헬퍼 함수
-    int readNextNalu(uint8_t* buffer, int maxSize);
 
     int sockFd = -1;
     struct sockaddr_in destAddr{};
@@ -28,7 +27,6 @@ private:
     
     uint16_t seqNum = 0;
     uint32_t timestamp = 0;
-    
-    // H.264 파일 관련
-    FILE* fp = nullptr;
+
+    std::shared_ptr<StreamBuffer> streamBuffer_;
 };

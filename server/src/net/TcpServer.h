@@ -1,11 +1,12 @@
 #pragma once
 #include <map>
 #include <memory>
-#include "RtspSession.h" // 같은 폴더
+#include "RtspSession.h"
+#include "media/StreamBuffer.h"
 
 class TcpServer {
 public:
-    TcpServer(int port);
+    TcpServer(int port, std::shared_ptr<StreamBuffer> streamBuffer);
     ~TcpServer();
     void start(); 
 
@@ -17,4 +18,5 @@ private:
     int serverFd;
     int epollFd;
     std::map<int, std::unique_ptr<RtspSession>> sessions;
+    std::shared_ptr<StreamBuffer> streamBuffer_;
 };

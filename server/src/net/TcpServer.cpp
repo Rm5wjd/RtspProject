@@ -9,7 +9,8 @@
 
 #define MAX_EVENTS 10
 
-TcpServer::TcpServer(int p) : port(p) {}
+TcpServer::TcpServer(int p, std::shared_ptr<StreamBuffer> streamBuffer) 
+    : port(p), streamBuffer_(streamBuffer) {}
 
 TcpServer::~TcpServer() {
     close(serverFd);
@@ -71,9 +72,9 @@ void TcpServer::start() {
                     ev.data.fd = clientFd;
                     epoll_ctl(epollFd, EPOLL_CTL_ADD, clientFd, &ev);
                     
-                    std::string ip = inet_ntoa(clientAddr.sin_addr);
-                    sessions[clientFd] = std::make_unique<RtspSession>(clientFd, ip);
-                    std::cout << "New Client Connected: " << ip << std::endl;
+                    char clientIp[INET_ADDRSTRLEN];
+                    inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, INET_ADDRSTRLEN);
+                    sessions[clientFd] = std::make_unique<RtspSession>(clientFd, clientIp, streamBuffer_);
                 }
             } else { 
                 if (sessions.find(fd) != sessions.end()) {

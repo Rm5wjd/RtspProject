@@ -1,10 +1,13 @@
 #pragma once
-#include "RtpSender.h" // 같은 폴더에 있으므로 바로 include
+#include "media/StreamBuffer.h"
 #include <string>
+#include <memory>
+
+class RtpSender; // Forward declaration
 
 class RtspSession {
 public:
-    RtspSession(int fd, std::string clientIp);
+    RtspSession(int fd, std::string clientIp, std::shared_ptr<StreamBuffer> streamBuffer);
     ~RtspSession();
 
     bool handleEvent(); 
@@ -20,6 +23,9 @@ private:
 
     int clientFd;
     std::string clientIp;
-    RtpSender rtpSender;
+    
+    std::unique_ptr<RtpSender> rtpSender_;
+    std::shared_ptr<StreamBuffer> streamBuffer_;
+
     int clientRtpPort = 0;
 };
