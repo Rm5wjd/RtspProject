@@ -1,0 +1,2 @@
+set(__QT_DEPLOY_TARGET_client_user_FILE /Users/jincheol/Desktop/VEDA/RtspProject/client_user/bin/client_user)
+set(__QT_DEPLOY_TARGET_client_user_TYPE EXECUTABLE)

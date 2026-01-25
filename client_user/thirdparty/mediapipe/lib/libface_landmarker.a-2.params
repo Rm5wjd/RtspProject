@@ -1,0 +1,5 @@
+-static
+-s
+-o
+bazel-out/darwin_arm64-opt/bin/mediapipe/tasks/cc/vision/face_landmarker/libface_landmarker.a
+bazel-out/darwin_arm64-opt/bin/mediapipe/tasks/cc/vision/face_landmarker/_objs/face_landmarker/face_landmarker.o

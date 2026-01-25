@@ -1,0 +1,9 @@
+module "com_google_protobuf//src/google/protobuf:field_mask_proto" {
+  export *
+  textual header "../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/_virtual_includes/field_mask_proto/google/protobuf/field_mask.pb.h"
+  textual header "../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/_virtual_imports/field_mask_proto/google/protobuf/field_mask.pb.h"
+  use "com_google_protobuf//src/google/protobuf:protobuf"
+  use "crosstool"
+}
+extern module "com_google_protobuf//src/google/protobuf:protobuf" "../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/protobuf.cppmap"
+extern module "crosstool" "../../../../../../../../external/local_config_cc/module.modulemap"

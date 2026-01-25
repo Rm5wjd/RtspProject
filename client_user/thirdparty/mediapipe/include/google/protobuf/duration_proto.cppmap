@@ -1,0 +1,9 @@
+module "com_google_protobuf//src/google/protobuf:duration_proto" {
+  export *
+  textual header "../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/_virtual_includes/duration_proto/google/protobuf/duration.pb.h"
+  textual header "../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/_virtual_imports/duration_proto/google/protobuf/duration.pb.h"
+  use "com_google_protobuf//src/google/protobuf:protobuf"
+  use "crosstool"
+}
+extern module "com_google_protobuf//src/google/protobuf:protobuf" "../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/protobuf.cppmap"
+extern module "crosstool" "../../../../../../../../external/local_config_cc/module.modulemap"

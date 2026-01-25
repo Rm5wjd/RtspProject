@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/">
+    <file alias="qml/VideoScene.qml">/Users/jincheol/Desktop/VEDA/RtspProject/client_user/qml/VideoScene.qml</file>
+  </qresource>
+</RCC>
+

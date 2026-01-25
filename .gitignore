@@ -3,6 +3,7 @@
 bin/
 *.o
 *.so
+*.cmake
 
 # Video files (100MB 넘는 것들 필수 차단)
 *.mp4
@@ -16,3 +17,4 @@ server/*.h264
 .vscode/
 .idea/
 .DS_Store
+.qt
