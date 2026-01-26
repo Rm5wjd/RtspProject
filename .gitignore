@@ -3,7 +3,43 @@
 bin/
 *.o
 *.so
+*.a
+*.dylib
+*.dll
+*.exe
 *.cmake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.make
+
+# Qt generated files
+*_autogen/
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+
+# Python
+venv/
+env/
+ENV/
+.venv
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Python virtual environment (venv)
+pyvenv.cfg
 
 # Video files (100MB 넘는 것들 필수 차단)
 *.mp4
@@ -16,5 +52,31 @@ server/*.h264
 # Editor settings
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 .DS_Store
 .qt
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# IDE and editor
+*.sublime-*
+.project
+.classpath
+.settings/
+
+# OS files
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Executables
+client_user
+test_*

@@ -26,6 +26,19 @@ public:
         
         QMutexLocker lock(&mutex);
         
+        // 이미지가 없거나 비어있으면 기본 검은색 이미지 반환
+        if (currentImage.isNull() || currentImage.size().isEmpty()) {
+            // 기본 이미지 크기는 요청된 크기 또는 640x480
+            int width = requestedSize.width() > 0 ? requestedSize.width() : 640;
+            int height = requestedSize.height() > 0 ? requestedSize.height() : 480;
+            QImage defaultImage(width, height, QImage::Format_RGB888);
+            defaultImage.fill(Qt::black);
+            if (size) {
+                *size = defaultImage.size();
+            }
+            return defaultImage;
+        }
+        
         if (size) {
             *size = currentImage.size();
         }
@@ -35,7 +48,9 @@ public:
     
     void setImage(const QImage &image) {
         QMutexLocker lock(&mutex);
-        currentImage = image;
+        if (!image.isNull() && !image.size().isEmpty()) {
+            currentImage = image.copy();  // 복사본 저장
+        }
     }
     
 private:
@@ -62,6 +77,9 @@ VideoQuick3DWidget::VideoQuick3DWidget(QWidget *parent)
     if (!g_videoImageProvider) {
         g_videoImageProvider = new VideoImageProvider();
         engine->addImageProvider("video", g_videoImageProvider);
+        std::cout << "VideoImageProvider registered: image://video/frame" << std::endl;
+    } else {
+        std::cout << "VideoImageProvider already exists" << std::endl;
     }
     
     // C++ 객체를 QML에 노출
@@ -94,36 +112,51 @@ VideoQuick3DWidget::~VideoQuick3DWidget()
 
 void VideoQuick3DWidget::updateFrame(const cv::Mat &frame)
 {
-    if (frame.empty()) {
+    if (frame.empty() || frame.cols <= 0 || frame.rows <= 0) {
+        // 프레임이 비어있으면 조용히 리턴 (너무 많은 로그 방지)
         return;
     }
     
-    // OpenCV Mat을 QImage로 변환
-    cv::Mat rgbFrame;
-    cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
-    
-    // 연속된 메모리로 변환 (필요한 경우)
-    cv::Mat continuousFrame;
-    if (!rgbFrame.isContinuous()) {
-        rgbFrame.copyTo(continuousFrame);
-    } else {
-        continuousFrame = rgbFrame;
+    try {
+        // OpenCV Mat을 QImage로 변환
+        cv::Mat rgbFrame;
+        cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
+        
+        // 연속된 메모리로 변환 (필요한 경우)
+        cv::Mat continuousFrame;
+        if (!rgbFrame.isContinuous()) {
+            rgbFrame.copyTo(continuousFrame);
+        } else {
+            continuousFrame = rgbFrame;
+        }
+        
+        // QImage 생성 (데이터 복사 - 원본 Mat이 사라질 수 있으므로)
+        // QImage는 데이터를 참조하므로, 반드시 깊은 복사 필요
+        QImage qimg(continuousFrame.data, continuousFrame.cols, continuousFrame.rows, 
+                    continuousFrame.step, QImage::Format_RGB888);
+        
+        if (qimg.isNull()) {
+            return;
+        }
+        
+        // QImage 깊은 복사 (원본 데이터가 사라지지 않도록)
+        // copy()는 깊은 복사를 수행하지만, detach()를 명시적으로 호출하여 안전하게 처리
+        m_videoImage = qimg.copy();
+        if (m_videoImage.isNull()) {
+            return;
+        }
+        m_videoImage.detach();  // 데이터 분리 보장
+        
+        // ImageProvider에 이미지 업데이트 (유효한 이미지일 때만)
+        if (g_videoImageProvider && !m_videoImage.isNull() && !m_videoImage.size().isEmpty()) {
+            g_videoImageProvider->setImage(m_videoImage);
+        }
+        
+        // QML에 변경 알림
+        emit videoImageChanged();
+    } catch (const std::exception& e) {
+        std::cerr << "VideoQuick3DWidget::updateFrame exception: " << e.what() << std::endl;
     }
-    
-    // QImage 생성 (데이터 복사 - 원본 Mat이 사라질 수 있으므로)
-    QImage qimg(continuousFrame.data, continuousFrame.cols, continuousFrame.rows, 
-                continuousFrame.step, QImage::Format_RGB888);
-    
-    // QImage 복사 (원본 데이터가 사라지지 않도록 - 항상 복사)
-    m_videoImage = qimg.copy();
-    
-    // ImageProvider에 이미지 업데이트 (항상 업데이트)
-    if (g_videoImageProvider) {
-        g_videoImageProvider->setImage(m_videoImage);
-    }
-    
-    // QML에 변경 알림
-    emit videoImageChanged();
 }
 
 // MediaPipe 랜드마크 업데이트 (주석 처리)

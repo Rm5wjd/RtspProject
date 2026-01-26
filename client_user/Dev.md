@@ -1,10 +1,55 @@
 # Client User 개발 일지
 
 ## 개발 일자
-2026년 1월 23일
+- 2026년 1월 23일: 초기 프로젝트 구조 및 OpenGL 렌더링 파이프라인 구현
+- 2026년 1월 26일: MediaPipe Python 임베딩 및 실시간 얼굴 탐지 구현
 
 ## 개발 목표
 RTSP 서버로부터 전송되는 영상 스트림을 받아서 실시간으로 얼굴을 인식하고, OpenGL을 사용하여 얼굴 위에 3D 아바타를 렌더링하는 클라이언트 프로그램 개발
+
+## 현재 문제점 및 개선 필요 사항
+
+### 1. dlib 얼굴 탐지 성능 문제
+**문제:**
+- dlib detector가 고해상도 이미지에서 매우 느림
+- 테스트 결과: 2316x3088 이미지에서 4581ms 소요 (0.21 fps)
+- 실시간 비디오 스트림 처리에 부적합
+- 현재 별도 스레드로 분리했지만, 여전히 느린 탐지로 인한 지연 가능
+
+**해결 방안:**
+1. **이미지 리사이즈:** 처리 전에 640x480으로 축소 (10-50배 속도 향상)
+2. **YuNet 도입:** OpenCV YuNet 얼굴 탐지 모델 사용 (더 빠르고 정확)
+3. **하이브리드 방식:** YuNet으로 탐지 + dlib으로 landmark만 예측
+4. **dlib detector 최적화:** `upsample=0` 설정으로 속도 향상
+
+**참고:** `test/test_dev.md`에 상세한 최적화 방법과 성능 비교가 문서화되어 있음
+
+### 2. 프레임 처리 속도
+**현재 상태:**
+- dlib 탐지가 별도 스레드에서 실행되지만, 여전히 느림
+- 10프레임마다 처리하도록 설정했지만, 각 처리 시간이 길어 지연 발생 가능
+- 고해상도 웹캠 프레임(1280x720 등)에서 성능 저하
+
+**현재 구현:**
+- 별도 스레드로 dlib 처리 분리 (`dlibProcessingThread`)
+- 프레임 큐를 통한 비동기 처리
+- 10프레임마다 처리 (`dlibProcessInterval = 10`)
+
+**개선 필요:**
+- YuNet으로 얼굴 탐지 속도 향상 (10-50ms)
+- 이미지 리사이즈로 처리 시간 단축
+- 예상 성능: 10-20 fps 달성 가능
+
+### 3. 성능 측정 부재
+**문제:**
+- 현재 프레임 처리 시간을 측정하지 않음
+- 실제 FPS를 모니터링하지 않음
+- 성능 병목 지점 파악 어려움
+
+**개선 필요:**
+- 각 단계별 처리 시간 측정 추가
+- FPS 모니터링 및 표시
+- 성능 로그 출력
 
 ## 오늘 개발한 내용
 
@@ -229,3 +274,170 @@ cd build/bin
 1. **OpenCV로 바운딩 박스 그리기**: OpenGL 3.3 Core Profile의 제약을 피하기 위해 OpenCV의 `cv::rectangle()` 사용
 2. **다중 경로 리소스 검색**: 실행 위치에 독립적으로 작동하도록 여러 경로 시도
 3. **Homebrew 자동 감지**: Mac M1에서 OpenCV 경로를 자동으로 찾도록 구현
+
+---
+
+## 2026년 1월 26일 개발 내용
+
+### 주요 성과
+✅ **MediaPipe Python 임베딩 구현 완료**
+- Python C API를 사용하여 같은 프로세스 내에서 MediaPipe 직접 호출
+- JSON 파싱 없이 직접 값으로 반환 (성능 향상)
+- venv 경로 자동 감지 및 Python 경로 설정
+- 실시간 얼굴 탐지 및 화면 표시 구현
+
+### 구현된 기능
+
+#### 1. Python 사이드카 패턴 → Python C API 임베딩으로 전환
+**초기 계획:**
+- Python 프로세스를 별도로 실행하고 JSON으로 통신하는 사이드카 패턴
+
+**최종 구현:**
+- Python C API를 사용하여 같은 프로세스 내에서 직접 호출
+- `QProcess` 대신 `PyObject`로 직접 함수 호출
+- JSON 파싱 오버헤드 제거
+- 프로세스 간 통신 오버헤드 제거
+
+**장점:**
+- 더 빠른 통신 (프로세스 간 통신 없음)
+- 메모리 효율적 (cv::Mat을 numpy array로 직접 변환)
+- 간단한 에러 처리 (Python 예외 직접 처리)
+
+#### 2. MediaPipe 얼굴 탐지 및 Blendshape 추출
+**구현 내용:**
+- MediaPipe FaceLandmarker 모델 사용
+- 478개 얼굴 랜드마크 추출 (정규화된 좌표 0-1)
+- 52개 Blendshape 값 추출 (눈 깜빡임, 입 벌림, 표정 등)
+- 5프레임마다 비동기 처리 (설정 가능)
+
+**Python 모듈 (`mediapipe_module.py`):**
+```python
+def initialize(model_path) -> bool
+def process_frame(image_array, width, height) -> dict | None
+```
+
+**C++ 클래스 (`MediaPipeProcessor`):**
+- `start()`: Python 초기화 및 MediaPipe 모델 로드
+- `processFrame(frame)`: 프레임을 큐에 추가하여 비동기 처리
+- `faceDetected` 시그널: 얼굴 탐지 결과 전달
+
+#### 3. venv 경로 자동 감지
+**문제:**
+- 시스템 Python을 사용하면 venv에 설치된 mediapipe를 찾을 수 없음
+
+**해결:**
+- Python 버전을 동적으로 감지 (`Py_GetVersion()`)
+- 여러 Python 버전 경로 시도 (3.14, 3.13, 3.12 등)
+- venv의 site-packages 경로를 `sys.path`에 자동 추가
+- 상대/절대 경로 모두 지원
+
+#### 4. 실시간 얼굴 표시
+**OpenCV로 프레임에 직접 그리기:**
+- 478개 랜드마크를 초록색 점으로 표시
+- 얼굴 영역을 노란색 박스로 표시
+
+**QML에서 얼굴 영역 표시:**
+- 정규화된 좌표(0-1)로 얼굴 위치 계산
+- 반투명 Rectangle로 얼굴 영역 표시
+- `faceWidth > 0 && faceHeight > 0`일 때만 표시
+
+**데이터 흐름:**
+```
+MediaPipe Python → FaceData 구조체 → MainWindow::onFaceDetected()
+→ VideoQuick3DWidget::setFaceData() → QML property 업데이트
+→ 화면에 실시간 표시
+```
+
+### 기술 스택 추가
+
+#### Python 관련
+- **Python3 C API**: Python 임베딩
+- **NumPy**: cv::Mat ↔ numpy array 변환
+- **MediaPipe**: 얼굴 탐지 및 Blendshape 추출
+
+#### CMake 설정
+- `find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)`
+- 시스템 Python 사용 (venv는 site-packages만 추가)
+- NumPy 헤더 경로 자동 감지
+
+### 해결한 문제들
+
+#### 1. Python.h와 numpy 헤더 충돌
+**문제:**
+- `PyType_Slot` 중복 정의 오류
+- 헤더 포함 순서 문제
+
+**해결:**
+- Python.h를 다른 모든 헤더보다 먼저 포함
+- numpy 헤더는 Python.h 이후에 포함
+- 헤더 파일에서는 전방 선언만 사용
+
+#### 2. venv의 mediapipe 모듈을 찾을 수 없음
+**문제:**
+- 시스템 Python을 사용하여 venv의 패키지를 찾지 못함
+
+**해결:**
+- venv의 site-packages 경로를 `sys.path`에 동적으로 추가
+- Python 버전을 자동으로 감지하여 경로 생성
+- 여러 가능한 경로를 순차적으로 시도
+
+#### 3. 얼굴 탐지는 되지만 화면에 표시되지 않음
+**문제:**
+- `onFaceDetected()`에서 데이터를 받지만 화면에 그리지 않음
+
+**해결:**
+- 랜드마크에서 얼굴 영역 계산 (min/max 좌표)
+- OpenCV로 프레임에 직접 그리기
+- `VideoQuick3DWidget::setFaceData()`로 QML에 전달
+- QML에서 `faceWidth > 0` 조건으로 표시
+
+### 성능
+
+**처리 속도:**
+- MediaPipe 얼굴 탐지: ~30-50ms (5프레임마다 처리)
+- 프레임 표시: 실시간 (30 FPS)
+- Blendshape 추출: MediaPipe 내부 처리 (추가 오버헤드 없음)
+
+**메모리:**
+- numpy array로 직접 변환 (복사 최소화)
+- 큐 크기 제한 (최대 5개 프레임)
+
+### 파일 구조
+
+```
+client_user/
+├── python/
+│   ├── mediapipe_module.py      # MediaPipe Python 모듈
+│   ├── mediapipe_processor.py   # (구버전, 사용 안 함)
+│   ├── requirements.txt          # Python 의존성
+│   └── README_EMBEDDED.md       # Python 임베딩 사용법
+├── src/
+│   ├── MediaPipeProcessor.h     # MediaPipe 프로세서 헤더
+│   └── MediaPipeProcessor.cpp    # Python C API 구현
+└── thirdparty/
+    └── mediapipe/
+        └── models/
+            └── face_landmarker.task  # MediaPipe 모델 파일
+```
+
+### 다음 단계
+
+1. **Blendshape를 활용한 아바타 제어**
+   - 눈 깜빡임 (`eyeBlinkLeft`, `eyeBlinkRight`)
+   - 입 벌림 (`jawOpen`)
+   - 표정 변화 (`mouthSmileLeft`, `mouthSmileRight` 등)
+
+2. **성능 최적화**
+   - 처리 간격 조정 (현재 5프레임마다)
+   - 이미지 리사이즈 옵션 추가
+   - 멀티스레딩 최적화
+
+3. **UI 개선**
+   - Blendshape 값 실시간 표시
+   - 얼굴 탐지 상태 표시
+   - 처리 FPS 표시
+
+### 참고 자료
+- MediaPipe Face Landmarker: https://developers.google.com/mediapipe/solutions/vision/face_landmarker
+- Python C API: https://docs.python.org/3/c-api/
+- NumPy C API: https://numpy.org/doc/stable/reference/c-api/

@@ -31,7 +31,7 @@ else()
     else()
         message(FATAL_ERROR "Qt5 or Qt6 with QuickWidgets is required. Please install Qt with QuickWidgets module.")
     endif()
-endif()
+        endif()
 
 # =======================
 # 2. OpenCV 찾기 (macOS arm64 Homebrew 우선)
@@ -109,10 +109,47 @@ else()
     endif()
 endif()
 
+# =======================
+# Python 임베딩 설정
+# =======================
+# 시스템 Python 사용 (venv가 아닌)
+set(Python3_FIND_VIRTUALENV FIRST)
+
+find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)
+if(Python3_FOUND)
+    message(STATUS "Python3 found: ${Python3_VERSION}")
+    message(STATUS "Python3 executable: ${Python3_EXECUTABLE}")
+    message(STATUS "Python3 include dirs: ${Python3_INCLUDE_DIRS}")
+    message(STATUS "Python3 libraries: ${Python3_LIBRARIES}")
+    
+    # NumPy 헤더 경로 확인 및 설정
+    if(Python3_NumPy_FOUND)
+        message(STATUS "NumPy found: ${Python3_NumPy_VERSION}")
+        message(STATUS "NumPy include dirs: ${Python3_NumPy_INCLUDE_DIRS}")
+    else()
+        # NumPy 헤더 경로를 직접 찾기
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import numpy; print(numpy.get_include())"
+            OUTPUT_VARIABLE NUMPY_INCLUDE_DIR
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(NUMPY_INCLUDE_DIR)
+            set(Python3_NumPy_INCLUDE_DIRS ${NUMPY_INCLUDE_DIR})
+            message(STATUS "NumPy include dirs (found manually): ${Python3_NumPy_INCLUDE_DIRS}")
+        else()
+            message(FATAL_ERROR "NumPy not found. Please install: pip3 install numpy")
+        endif()
+    endif()
+else()
+    message(FATAL_ERROR "Python3 with NumPy is required. Please install: pip3 install numpy")
+endif()
+
 # 헤더 경로 추가
 include_directories(
     ${CMAKE_SOURCE_DIR}/thirdparty/tinygltf
     ${OpenCV_INCLUDE_DIRS}
+    ${Python3_INCLUDE_DIRS}
+    ${Python3_NumPy_INCLUDE_DIRS}
 )
 
 # MediaPipe 설정 (주석 처리 - dlib 사용)
@@ -215,6 +252,7 @@ target_link_libraries(client_user PRIVATE
     ${OpenCV_LIBS}
     # ${MEDIAPIPE_LIBS}  # MediaPipe 라이브러리 (주석 처리)
     ${DLIB_LIBRARIES}  # dlib 라이브러리
+    ${Python3_LIBRARIES}  # Python3 라이브러리
 )
 
 # dlib이 BLAS/LAPACK을 필요로 하는 경우 추가
