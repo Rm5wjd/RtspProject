@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "MediaPipeProcessor.h"
 #include <QApplication>
 #include <QMessageBox>
 #include <QDir>
@@ -12,24 +13,26 @@ MainWindow::MainWindow(QWidget *parent)
     , isWebcamMode(false)  // 웹캠 모드 초기값
     , selectedCharacterIndex(-1)
     , targetFPS(30)  // 기본 FPS: 30
-    , dlibProcessInterval(2)  // dlib는 매 2프레임마다 처리 (FPS/2)
-    , dlibInitialized(false)
-    , frameCounter(0)
+    , mediaPipeProcessor(nullptr)
+    , hasFaceData(false)
 {
     setupUI();
     setupVideoWidget();
     setupCharacterSelector();
-    // initializeMediaPipe();  // MediaPipe 초기화 (주석 처리)
-    initializeDlib();  // dlib 초기화
+    
+    // MediaPipe 프로세서 초기화
+    mediaPipeProcessor = new MediaPipeProcessor(this);
+    mediaPipeProcessor->setProcessInterval(5);  // 5프레임마다 처리
+    connect(mediaPipeProcessor, &MediaPipeProcessor::faceDetected,
+            this, &MainWindow::onFaceDetected);
+    connect(mediaPipeProcessor, &MediaPipeProcessor::errorOccurred,
+            this, [this](const QString &error) {
+                std::cerr << "MediaPipe error: " << error.toStdString() << std::endl;
+            });
     
     // 비디오 프레임 업데이트 타이머 설정
     videoTimer = new QTimer(this);
     setFPS(targetFPS);  // FPS 설정
-    
-    // 위젯에 FPS 설정
-    if (videoQuick3DWidget) {
-        // Qt Quick 3D는 QML에서 처리
-    }
     
     connect(videoTimer, &QTimer::timeout, this, &MainWindow::updateVideoFrame);
     
@@ -193,50 +196,6 @@ void MainWindow::initializeMediaPipe()
 }
 */
 
-// dlib 초기화
-void MainWindow::initializeDlib()
-{
-    try {
-        // dlib 얼굴 탐지기 초기화
-        faceDetector = dlib::get_frontal_face_detector();
-        
-        // dlib shape predictor 모델 경로 찾기
-        std::vector<std::string> possiblePaths = {
-            "../thirdparty/dlib/models/shape_predictor_68_face_landmarks.dat",
-            "../../thirdparty/dlib/models/shape_predictor_68_face_landmarks.dat",
-            "thirdparty/dlib/models/shape_predictor_68_face_landmarks.dat",
-            "/Users/jincheol/Desktop/VEDA/RtspProject/client_user/thirdparty/dlib/models/shape_predictor_68_face_landmarks.dat",
-            "/usr/local/share/dlib/shape_predictor_68_face_landmarks.dat",
-            "/opt/homebrew/share/dlib/shape_predictor_68_face_landmarks.dat"
-        };
-        
-        std::string modelPath;
-        bool modelFound = false;
-        for (const auto& path : possiblePaths) {
-            std::ifstream file(path);
-            if (file.good()) {
-                modelPath = path;
-                modelFound = true;
-                std::cout << "Found dlib model at: " << path << std::endl;
-                break;
-            }
-        }
-        
-        if (!modelFound) {
-            QMessageBox::warning(this, "경고", "dlib 모델 파일을 찾을 수 없습니다.\n"
-                                               "shape_predictor_68_face_landmarks.dat 파일을 확인하세요.\n"
-                                               "다운로드: http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2");
-            return;
-        }
-        
-        // shape predictor 로드
-        dlib::deserialize(modelPath) >> shapePredictor;
-        dlibInitialized = true;
-        std::cout << "dlib initialized successfully" << std::endl;
-    } catch (const std::exception& e) {
-        QMessageBox::critical(this, "오류", QString("dlib 초기화 중 예외 발생: %1").arg(e.what()));
-    }
-}
 
 void MainWindow::setFPS(int fps)
 {
@@ -249,19 +208,7 @@ void MainWindow::setFPS(int fps)
     int intervalMs = 1000 / fps;
     videoTimer->setInterval(intervalMs);
     
-    // dlib 처리 간격 자동 조정 (FPS가 높을수록 더 자주 처리)
-    if (fps >= 60) {
-        dlibProcessInterval = 1;  // 60FPS 이상: 매 프레임 처리
-    } else if (fps >= 30) {
-        dlibProcessInterval = 2;  // 30-59FPS: 매 2프레임마다 처리
-    } else {
-        dlibProcessInterval = 3;  // 30FPS 미만: 매 3프레임마다 처리
-    }
-    
-    // Qt Quick 3D는 QML에서 FPS 처리
-    
-    std::cout << "FPS 설정: " << targetFPS << " (간격: " << intervalMs << "ms, dlib 처리 간격: " 
-              << dlibProcessInterval << "프레임마다)" << std::endl;
+    std::cout << "FPS 설정: " << targetFPS << " (간격: " << intervalMs << "ms)" << std::endl;
 }
 
 void MainWindow::setupCharacterSelector()
@@ -376,6 +323,11 @@ void MainWindow::onDisconnectClicked()
     isConnected = false;
     isWebcamMode = false;  // 웹캠 모드 해제
     
+    // MediaPipe 프로세서 중지
+    if (mediaPipeProcessor && mediaPipeProcessor->isRunning()) {
+        mediaPipeProcessor->stop();
+    }
+    
     statusLabel->setText("연결 안 됨");
     statusLabel->setStyleSheet("color: red; font-weight: bold;");
     connectButton->setEnabled(true);
@@ -424,6 +376,13 @@ void MainWindow::onWebcamModeClicked()
         connectButton->setEnabled(false);
         disconnectButton->setEnabled(true);
         serverUrlEdit->setEnabled(false);
+        
+        // MediaPipe 프로세서 시작
+        if (mediaPipeProcessor && !mediaPipeProcessor->isRunning()) {
+            if (!mediaPipeProcessor->start()) {
+                std::cerr << "Failed to start MediaPipe processor" << std::endl;
+            }
+        }
         
         // 비디오 타이머 시작
         videoTimer->start(33); // ~30 FPS
@@ -503,134 +462,113 @@ void MainWindow::updateVideoFrame()
         return;
     }
     
-    // FPS 유지: 비디오는 매 프레임 표시, dlib는 설정된 간격마다 처리
-    frameCounter++;
-    
-    // dlib 얼굴 특징점 탐지 (설정된 간격마다)
-    if (dlibInitialized && frameCounter % dlibProcessInterval == 0) {
-        detectFacesWithDlib(frame);
+    // 프레임 유효성 확인
+    if (frame.cols <= 0 || frame.rows <= 0) {
+        return;
     }
     
-    // Qt Quick 3D 위젯에 프레임 업데이트 (우선)
-    if (videoQuick3DWidget) {
-        videoQuick3DWidget->updateFrame(frame);
-        
-        // 랜드마크 업데이트 (dlib 결과 사용)
-        std::lock_guard<std::mutex> lock(resultMutex);
-        if (!lastLandmarkResults.empty()) {
-            // dlib 결과를 VideoQuick3DWidget에 전달
-            videoQuick3DWidget->updateLandmarks(lastLandmarkResults);
-            
-            // 첫 번째 얼굴의 랜드마크를 사용하여 얼굴 위치 및 크기 계산
-            const auto& face = lastLandmarkResults[0];
-            if (face.num_parts() > 0) {
-                dlib::rectangle rect = face.get_rect();
-                float faceX = static_cast<float>(rect.left() + rect.right()) / (2.0f * frame.cols);
-                float faceY = static_cast<float>(rect.top() + rect.bottom()) / (2.0f * frame.rows);
-                float faceWidth = static_cast<float>(rect.width()) / frame.cols;
-                float faceHeight = static_cast<float>(rect.height()) / frame.rows;
-                
-                videoQuick3DWidget->setFaceData(faceX, faceY, faceWidth, faceHeight);
-            }
+    // MediaPipe 프로세서에 프레임 전달 (비동기 처리)
+    if (mediaPipeProcessor && mediaPipeProcessor->isRunning()) {
+        mediaPipeProcessor->processFrame(frame);
+    }
+    
+    // 얼굴 데이터가 있으면 프레임에 그리기
+    if (hasFaceData && !currentFaceData.landmarks.isEmpty()) {
+        // 랜드마크 그리기
+        for (const auto &landmark : currentFaceData.landmarks) {
+            int x = static_cast<int>(landmark.x * frame.cols);
+            int y = static_cast<int>(landmark.y * frame.rows);
+            cv::circle(frame, cv::Point(x, y), 2, cv::Scalar(0, 255, 0), -1);
         }
-        videoQuick3DWidget->setAvatarIndex(selectedCharacterIndex);
-    } else {
+        
+        // 얼굴 영역 박스 그리기
+        float minX = 1.0f, minY = 1.0f, maxX = 0.0f, maxY = 0.0f;
+        for (const auto &landmark : currentFaceData.landmarks) {
+            minX = std::min(minX, landmark.x);
+            minY = std::min(minY, landmark.y);
+            maxX = std::max(maxX, landmark.x);
+            maxY = std::max(maxY, landmark.y);
+        }
+        
+        cv::Point pt1(static_cast<int>(minX * frame.cols), static_cast<int>(minY * frame.rows));
+        cv::Point pt2(static_cast<int>(maxX * frame.cols), static_cast<int>(maxY * frame.rows));
+        cv::rectangle(frame, pt1, pt2, cv::Scalar(0, 255, 255), 2);
+    }
+    
+    // 영상은 실시간으로 바로 표시
+    if (videoQuick3DWidget) {
+        // 프레임이 유효한지 확인
+        if (!frame.empty() && frame.cols > 0 && frame.rows > 0) {
+            videoQuick3DWidget->updateFrame(frame);
+        }
+    } else if (videoLabel) {
         // Fallback: QLabel에 표시
         QImage qimg = matToQImage(frame);
-        QPixmap pixmap = QPixmap::fromImage(qimg);
-        
-        QSize labelSize = videoLabel->size();
-        if (labelSize.width() > 0 && labelSize.height() > 0) {
-            pixmap = pixmap.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        if (!qimg.isNull()) {
+            QPixmap pixmap = QPixmap::fromImage(qimg);
+            
+            QSize labelSize = videoLabel->size();
+            if (labelSize.width() > 0 && labelSize.height() > 0) {
+                pixmap = pixmap.scaled(labelSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            }
+            
+            videoLabel->setPixmap(pixmap);
         }
-        
-        videoLabel->setPixmap(pixmap);
     }
 }
 
-// MediaPipe 얼굴 탐지 (주석 처리)
-/*
-void MainWindow::detectFacesWithMediaPipe(cv::Mat &frame)
+void MainWindow::onFaceDetected(const QVector<MediaPipeProcessor::FaceData> &faces)
 {
-    if (!mediaPipeInitialized || !faceLandmarker) {
+    if (faces.isEmpty()) {
+        // 얼굴이 없으면 초기화
+        hasFaceData = false;
+        if (videoQuick3DWidget) {
+            videoQuick3DWidget->setFaceData(0.0, 0.0, 0.0, 0.0);
+        }
         return;
     }
     
-    try {
-        // OpenCV Mat을 MediaPipe Image로 변환
-        cv::Mat rgbFrame;
-        cv::cvtColor(frame, rgbFrame, cv::COLOR_BGR2RGB);
+    // 첫 번째 얼굴 데이터 사용
+    currentFaceData = faces[0];
+    hasFaceData = true;
+    
+    // Blendshape 데이터 출력 (예시)
+    std::cout << "=== Face Detected ===" << std::endl;
+    std::cout << "Landmarks: " << currentFaceData.landmarks.size() << " points" << std::endl;
+    std::cout << "Blendshapes: " << currentFaceData.blendshapes.size() << " values" << std::endl;
+    
+    // 주요 Blendshape 출력 (예시)
+    for (const auto &blendshape : currentFaceData.blendshapes) {
+        if (blendshape.score > 0.1f) {  // 임계값 이상만 출력
+            std::cout << "  " << blendshape.category.toStdString() 
+                      << ": " << blendshape.score << std::endl;
+        }
+    }
+    
+    // 랜드마크에서 얼굴 영역 계산 (정규화된 좌표 0-1)
+    if (!currentFaceData.landmarks.isEmpty()) {
+        float minX = 1.0f, minY = 1.0f, maxX = 0.0f, maxY = 0.0f;
         
-        // MediaPipe Image 생성 (데이터 복사 필요)
-        // MediaPipe Image는 연속된 메모리와 올바른 스트라이드를 요구함
-        cv::Mat continuousFrame;
-        if (!rgbFrame.isContinuous()) {
-            rgbFrame.copyTo(continuousFrame);
-        } else {
-            continuousFrame = rgbFrame;
+        for (const auto &landmark : currentFaceData.landmarks) {
+            minX = std::min(minX, landmark.x);
+            minY = std::min(minY, landmark.y);
+            maxX = std::max(maxX, landmark.x);
+            maxY = std::max(maxY, landmark.y);
         }
         
-        // MediaPipe Image 생성 (ImageFormat::SRGB 사용)
-        mediapipe::Image mpImage(
-            mediapipe::ImageFormat::SRGB,
-            continuousFrame.data,
-            continuousFrame.cols,
-            continuousFrame.rows
-        );
+        // 얼굴 중심 및 크기 계산 (정규화된 좌표)
+        double faceX = (minX + maxX) / 2.0;
+        double faceY = (minY + maxY) / 2.0;
+        double faceWidth = maxX - minX;
+        double faceHeight = maxY - minY;
         
-        // 타임스탬프 (밀리초) - FPS 기반 계산
-        int64_t timestamp_ms = frameCounter * (1000 / targetFPS);
-        
-        // 얼굴 랜드마크 탐지 (VIDEO 모드)
-        auto resultOr = faceLandmarker->DetectForVideo(mpImage, timestamp_ms);
-        
-        if (resultOr.ok()) {
-            std::lock_guard<std::mutex> lock(resultMutex);
-            lastLandmarkResult = *resultOr;
+        // VideoQuick3DWidget에 얼굴 데이터 전달
+        if (videoQuick3DWidget) {
+            videoQuick3DWidget->setFaceData(faceX, faceY, faceWidth, faceHeight);
         }
-    } catch (const std::exception& e) {
-        std::cerr << "MediaPipe detection error: " << e.what() << std::endl;
     }
 }
-*/
 
-// dlib 얼굴 특징점 탐지
-void MainWindow::detectFacesWithDlib(cv::Mat &frame)
-{
-    if (!dlibInitialized) {
-        return;
-    }
-    
-    try {
-        std::lock_guard<std::mutex> lock(dlibMutex);
-        
-        // OpenCV Mat을 dlib image로 변환
-        cv::Mat grayFrame;
-        cv::cvtColor(frame, grayFrame, cv::COLOR_BGR2GRAY);
-        
-        // dlib::cv_image로 변환 (메모리 공유, 복사 없음)
-        dlib::cv_image<dlib::bgr_pixel> dlibImg(frame);
-        dlib::cv_image<unsigned char> dlibGray(grayFrame);
-        
-        // 얼굴 탐지
-        std::vector<dlib::rectangle> faces = faceDetector(dlibGray);
-        
-        // 탐지된 얼굴에 대해 특징점 예측
-        std::vector<dlib::full_object_detection> shapes;
-        for (const auto& face : faces) {
-            dlib::full_object_detection shape = shapePredictor(dlibImg, face);
-            shapes.push_back(shape);
-        }
-        
-        // 결과 저장
-        {
-            std::lock_guard<std::mutex> lock(resultMutex);
-            lastLandmarkResults = shapes;
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "dlib detection error: " << e.what() << std::endl;
-    }
-}
 
 // MediaPipe 렌더링 함수 (주석 처리)
 /*
