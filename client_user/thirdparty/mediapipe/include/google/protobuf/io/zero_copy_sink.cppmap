@@ -1,0 +1,13 @@
+module "com_google_protobuf//src/google/protobuf/io:zero_copy_sink" {
+  export *
+  textual header "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/io/_virtual_includes/zero_copy_sink/google/protobuf/io/zero_copy_sink.h"
+  textual header "../../../../../../../../../external/com_google_protobuf/src/google/protobuf/io/zero_copy_sink.h"
+  use "com_google_protobuf//src/google/protobuf/io:io"
+  use "com_google_protobuf//src/google/protobuf:port"
+  use "com_google_protobuf//src/google/protobuf/stubs:stubs"
+  use "crosstool"
+}
+extern module "com_google_protobuf//src/google/protobuf/io:io" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/io/io.cppmap"
+extern module "com_google_protobuf//src/google/protobuf:port" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/port.cppmap"
+extern module "com_google_protobuf//src/google/protobuf/stubs:stubs" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/stubs/stubs.cppmap"
+extern module "crosstool" "../../../../../../../../../external/local_config_cc/module.modulemap"

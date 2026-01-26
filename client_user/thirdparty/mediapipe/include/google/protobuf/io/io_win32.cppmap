@@ -1,0 +1,13 @@
+module "com_google_protobuf//src/google/protobuf/io:io_win32" {
+  export *
+  textual header "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/io/_virtual_includes/io_win32/google/protobuf/io/io_win32.h"
+  textual header "../../../../../../../../../external/com_google_protobuf/src/google/protobuf/io/io_win32.h"
+  use "com_google_protobuf//src/google/protobuf:arena"
+  use "com_google_protobuf//src/google/protobuf/stubs:lite"
+  use "com_google_absl//absl/strings:strings"
+  use "crosstool"
+}
+extern module "com_google_protobuf//src/google/protobuf:arena" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/arena.cppmap"
+extern module "com_google_protobuf//src/google/protobuf/stubs:lite" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/stubs/lite.cppmap"
+extern module "com_google_absl//absl/strings:strings" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_absl/absl/strings/strings.cppmap"
+extern module "crosstool" "../../../../../../../../../external/local_config_cc/module.modulemap"

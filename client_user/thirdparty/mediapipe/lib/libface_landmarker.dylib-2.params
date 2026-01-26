@@ -1,0 +1,9 @@
+-shared
+-o
+bazel-out/darwin_arm64-opt/bin/mediapipe/tasks/cc/vision/face_landmarker/libface_landmarker.dylib
+bazel-out/darwin_arm64-opt/bin/mediapipe/tasks/cc/vision/face_landmarker/_objs/face_landmarker/face_landmarker.pic.o
+-undefined
+dynamic_lookup
+-headerpad_max_install_names
+-lc++
+-lm

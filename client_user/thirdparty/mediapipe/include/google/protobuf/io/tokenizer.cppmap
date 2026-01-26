@@ -1,0 +1,23 @@
+module "com_google_protobuf//src/google/protobuf/io:tokenizer" {
+  export *
+  textual header "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/io/_virtual_includes/tokenizer/google/protobuf/io/strtod.h"
+  textual header "../../../../../../../../../external/com_google_protobuf/src/google/protobuf/io/strtod.h"
+  textual header "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/io/_virtual_includes/tokenizer/google/protobuf/io/tokenizer.h"
+  textual header "../../../../../../../../../external/com_google_protobuf/src/google/protobuf/io/tokenizer.h"
+  use "com_google_protobuf//src/google/protobuf/io:io"
+  use "com_google_protobuf//src/google/protobuf:port"
+  use "com_google_protobuf//src/google/protobuf/stubs:stubs"
+  use "com_google_absl//absl/log:absl_check"
+  use "com_google_absl//absl/log:absl_log"
+  use "com_google_absl//absl/strings:strings"
+  use "com_google_absl//absl/strings:str_format"
+  use "crosstool"
+}
+extern module "com_google_protobuf//src/google/protobuf/io:io" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/io/io.cppmap"
+extern module "com_google_protobuf//src/google/protobuf:port" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/port.cppmap"
+extern module "com_google_protobuf//src/google/protobuf/stubs:stubs" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_protobuf/src/google/protobuf/stubs/stubs.cppmap"
+extern module "com_google_absl//absl/log:absl_check" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_absl/absl/log/absl_check.cppmap"
+extern module "com_google_absl//absl/log:absl_log" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_absl/absl/log/absl_log.cppmap"
+extern module "com_google_absl//absl/strings:strings" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_absl/absl/strings/strings.cppmap"
+extern module "com_google_absl//absl/strings:str_format" "../../../../../../../../../bazel-out/darwin_arm64-opt/bin/external/com_google_absl/absl/strings/str_format.cppmap"
+extern module "crosstool" "../../../../../../../../../external/local_config_cc/module.modulemap"
