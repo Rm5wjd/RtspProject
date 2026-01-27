@@ -87,10 +87,6 @@ private:
     // MediaPipe Python 사이드카 프로세서
     MediaPipeProcessor *mediaPipeProcessor;
     
-    // 현재 얼굴 데이터 (렌더링용)
-    MediaPipeProcessor::FaceData currentFaceData;
-    bool hasFaceData;
-    
 // QGst는 현재 사용하지 않음
 // #ifdef QGST_AVAILABLE
 //     QGst::Ui::VideoWidget *videoWidget = nullptr;

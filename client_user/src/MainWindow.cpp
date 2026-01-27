@@ -14,7 +14,6 @@ MainWindow::MainWindow(QWidget *parent)
     , selectedCharacterIndex(-1)
     , targetFPS(30)  // 기본 FPS: 30
     , mediaPipeProcessor(nullptr)
-    , hasFaceData(false)
 {
     setupUI();
     setupVideoWidget();
@@ -472,29 +471,6 @@ void MainWindow::updateVideoFrame()
         mediaPipeProcessor->processFrame(frame);
     }
     
-    // 얼굴 데이터가 있으면 프레임에 그리기
-    if (hasFaceData && !currentFaceData.landmarks.isEmpty()) {
-        // 랜드마크 그리기
-        for (const auto &landmark : currentFaceData.landmarks) {
-            int x = static_cast<int>(landmark.x * frame.cols);
-            int y = static_cast<int>(landmark.y * frame.rows);
-            cv::circle(frame, cv::Point(x, y), 2, cv::Scalar(0, 255, 0), -1);
-        }
-        
-        // 얼굴 영역 박스 그리기
-        float minX = 1.0f, minY = 1.0f, maxX = 0.0f, maxY = 0.0f;
-        for (const auto &landmark : currentFaceData.landmarks) {
-            minX = std::min(minX, landmark.x);
-            minY = std::min(minY, landmark.y);
-            maxX = std::max(maxX, landmark.x);
-            maxY = std::max(maxY, landmark.y);
-        }
-        
-        cv::Point pt1(static_cast<int>(minX * frame.cols), static_cast<int>(minY * frame.rows));
-        cv::Point pt2(static_cast<int>(maxX * frame.cols), static_cast<int>(maxY * frame.rows));
-        cv::rectangle(frame, pt1, pt2, cv::Scalar(0, 255, 255), 2);
-    }
-    
     // 영상은 실시간으로 바로 표시
     if (videoQuick3DWidget) {
         // 프레임이 유효한지 확인
@@ -520,40 +496,34 @@ void MainWindow::updateVideoFrame()
 void MainWindow::onFaceDetected(const QVector<MediaPipeProcessor::FaceData> &faces)
 {
     if (faces.isEmpty()) {
-        // 얼굴이 없으면 초기화
-        hasFaceData = false;
-        if (videoQuick3DWidget) {
-            videoQuick3DWidget->setFaceData(0.0, 0.0, 0.0, 0.0);
-        }
         return;
     }
     
     // 첫 번째 얼굴 데이터 사용
-    currentFaceData = faces[0];
-    hasFaceData = true;
+    const MediaPipeProcessor::FaceData &face = faces[0];
     
     // Blendshape 데이터 출력 (예시)
     std::cout << "=== Face Detected ===" << std::endl;
-    std::cout << "Landmarks: " << currentFaceData.landmarks.size() << " points" << std::endl;
-    std::cout << "Blendshapes: " << currentFaceData.blendshapes.size() << " values" << std::endl;
+    std::cout << "Landmarks: " << face.landmarks.size() << " points" << std::endl;
+    std::cout << "Blendshapes: " << face.blendshapes.size() << " values" << std::endl;
     
     // 주요 Blendshape 출력 (예시)
-    for (const auto &blendshape : currentFaceData.blendshapes) {
+    for (const auto &blendshape : face.blendshapes) {
         if (blendshape.score > 0.1f) {  // 임계값 이상만 출력
             std::cout << "  " << blendshape.category.toStdString() 
                       << ": " << blendshape.score << std::endl;
         }
     }
-    
+
     // 랜드마크에서 얼굴 영역 계산 (정규화된 좌표 0-1)
-    if (!currentFaceData.landmarks.isEmpty()) {
+    if (!face.landmarks.isEmpty() && videoQuick3DWidget) {
         float minX = 1.0f, minY = 1.0f, maxX = 0.0f, maxY = 0.0f;
         
-        for (const auto &landmark : currentFaceData.landmarks) {
-            minX = std::min(minX, landmark.x);
-            minY = std::min(minY, landmark.y);
-            maxX = std::max(maxX, landmark.x);
-            maxY = std::max(maxY, landmark.y);
+        for (const auto &lm : face.landmarks) {
+            minX = std::min(minX, lm.x);
+            minY = std::min(minY, lm.y);
+            maxX = std::max(maxX, lm.x);
+            maxY = std::max(maxY, lm.y);
         }
         
         // 얼굴 중심 및 크기 계산 (정규화된 좌표)
@@ -561,11 +531,14 @@ void MainWindow::onFaceDetected(const QVector<MediaPipeProcessor::FaceData> &fac
         double faceY = (minY + maxY) / 2.0;
         double faceWidth = maxX - minX;
         double faceHeight = maxY - minY;
-        
-        // VideoQuick3DWidget에 얼굴 데이터 전달
-        if (videoQuick3DWidget) {
-            videoQuick3DWidget->setFaceData(faceX, faceY, faceWidth, faceHeight);
+
+        // 값이 비정상적인 경우 보호
+        if (faceWidth < 0.0 || faceHeight < 0.0) {
+            return;
         }
+        
+        // VideoQuick3DWidget에 얼굴 데이터 전달 (QML 오버레이에서 사용)
+        videoQuick3DWidget->setFaceData(faceX, faceY, faceWidth, faceHeight);
     }
 }
 

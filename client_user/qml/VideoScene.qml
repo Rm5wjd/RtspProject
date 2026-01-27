@@ -13,53 +13,33 @@ Item {
     property real faceWidth: videoWidget ? videoWidget.faceWidth : 0.0
     property real faceHeight: videoWidget ? videoWidget.faceHeight : 0.0
     
-    // 비디오 배경 (2D) - 웹캠/서버 영상 표시
-    // 방법 1: ImageProvider 사용
+    // 비디오 배경 (2D) - C++ ImageProvider에서 가져온 프레임 표시
     Image {
         id: videoBackground
         anchors.fill: parent
         fillMode: Image.PreserveAspectFit
         source: "image://video/frame"
-        cache: false  // 실시간 업데이트를 위해 캐시 비활성화
+        cache: false          // 실시간 업데이트 위해 캐시 비활성화
         asynchronous: false
-        smooth: false  // 성능 향상을 위해 스무딩 비활성화
-        
-        // 주기적으로 이미지 갱신 (30 FPS)
+        smooth: false         // 성능 우선
+
+        // 주기적으로 이미지 갱신 (~30 FPS)
         Timer {
             id: videoUpdateTimer
-            interval: 33  // ~30 FPS
+            interval: 33      // 33ms ≒ 30 FPS
             running: true
             repeat: true
             onTriggered: {
-                // 타임스탬프를 변경하여 이미지 강제 갱신
-                var timestamp = Date.now()
-                videoBackground.source = "image://video/frame?" + timestamp
+                // 쿼리 스트링에 타임스탬프를 붙여 강제로 reload
+                var ts = Date.now()
+                videoBackground.source = "image://video/frame?" + ts
             }
         }
-        
-        // 초기화 시에도 이미지 로드
+
+        // 초기 로드
         Component.onCompleted: {
             videoBackground.source = "image://video/frame?" + Date.now()
         }
-    }
-    
-    // 방법 2: videoImage property 직접 사용 (백업)
-    /*
-    Image {
-        id: videoBackground2
-        anchors.fill: parent
-        fillMode: Image.PreserveAspectFit
-        source: videoWidget ? videoWidget.videoImage : ""
-        cache: false
-        asynchronous: false
-    }
-    */
-    
-    // 비디오가 없을 때 검은 배경
-    Rectangle {
-        anchors.fill: parent
-        color: "black"
-        z: -1  // 비디오 뒤에 배치
     }
     
     // 3D 씬 로더 (Quick3D가 있을 때만)
@@ -96,11 +76,11 @@ Item {
         }
     }
     
-    // Quick3D가 없을 때 2D 표시 (얼굴이 탐지되었을 때만 표시)
+    // 얼굴이 탐지되었을 때 2D 표시 (Quick3D 여부와 무관하게)
     Rectangle {
         anchors.fill: parent
         color: "transparent"
-        visible: faceWidth > 0 && faceHeight > 0  // 얼굴이 탐지되었을 때만 표시
+        visible: faceWidth > 0 && faceHeight > 0
         
         Rectangle {
             x: (parent.width * faceX) - (parent.width * faceWidth / 2)
@@ -111,7 +91,6 @@ Item {
             border.color: "white"
             border.width: 2
             radius: 10
-            opacity: 0.7
             
             // 간단한 얼굴 표시
             Row {
