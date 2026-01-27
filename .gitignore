@@ -18,3 +18,8 @@ server/*.h264
 .idea/
 .DS_Store
 .qt
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
