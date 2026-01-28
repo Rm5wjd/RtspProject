@@ -54,6 +54,7 @@ private:
     void setupVideoWidget();
     void setupCharacterSelector();
     void setFPS(int fps);  // FPS 설정 함수
+    void startMediaPipeIfNeeded();  // MediaPipe 시작 보조 함수
     QImage matToQImage(const cv::Mat &mat);
     
     // UI Components

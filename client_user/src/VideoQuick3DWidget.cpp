@@ -214,6 +214,13 @@ void VideoQuick3DWidget::setFaceData(double x, double y, double width, double he
         emit faceDataChanged();
     }
 }
+void VideoQuick3DWidget::setBlendshapes(const QList<qreal> &values)
+{
+    if (m_blendshapes != values) {
+        m_blendshapes = values;
+        emit blendshapesChanged();
+    }
+}
 
 void VideoQuick3DWidget::calculateFacePosition()
 {

@@ -21,7 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     
     // MediaPipe 프로세서 초기화
     mediaPipeProcessor = new MediaPipeProcessor(this);
-    mediaPipeProcessor->setProcessInterval(5);  // 5프레임마다 처리
+    mediaPipeProcessor->setProcessInterval(5);  // 5프레임마다 처리 (기본값)
     connect(mediaPipeProcessor, &MediaPipeProcessor::faceDetected,
             this, &MainWindow::onFaceDetected);
     connect(mediaPipeProcessor, &MediaPipeProcessor::errorOccurred,
@@ -39,6 +39,28 @@ MainWindow::MainWindow(QWidget *parent)
     QTimer::singleShot(1000, this, [this]() {
         onWebcamModeClicked();
     });
+}
+
+// MediaPipe 프로세서를 필요할 때마다 안전하게 시작
+void MainWindow::startMediaPipeIfNeeded()
+{
+    if (!mediaPipeProcessor) {
+        return;
+    }
+    
+    // 이미 실행 중이면 다시 시작하지 않음
+    if (mediaPipeProcessor->isRunning()) {
+        return;
+    }
+    
+    // 프로세스 간격 재설정 (안전하게 보장)
+    mediaPipeProcessor->setProcessInterval(5);  // 5프레임마다 처리
+    
+    if (!mediaPipeProcessor->start()) {
+        std::cerr << "Failed to start MediaPipe processor" << std::endl;
+    } else {
+        std::cout << "MediaPipe processor started (from startMediaPipeIfNeeded)" << std::endl;
+    }
 }
 
 MainWindow::~MainWindow()
@@ -283,11 +305,16 @@ void MainWindow::onConnectClicked()
         
         if (videoCapture.isOpened()) {
             isConnected = true;
+            isWebcamMode = false;  // 서버 모드
+            
             statusLabel->setText("연결됨");
             statusLabel->setStyleSheet("color: green; font-weight: bold;");
             connectButton->setEnabled(false);
             disconnectButton->setEnabled(true);
             serverUrlEdit->setEnabled(false);
+
+            // MediaPipe 프로세서 시작 (서버 모드에서도 항상 사용)
+            startMediaPipeIfNeeded();
             
             // 비디오 타이머 시작
             videoTimer->start(33); // ~30 FPS
@@ -322,9 +349,10 @@ void MainWindow::onDisconnectClicked()
     isConnected = false;
     isWebcamMode = false;  // 웹캠 모드 해제
     
-    // MediaPipe 프로세서 중지
+    // MediaPipe 프로세서 중지 (연결이 완전히 끊길 때만)
     if (mediaPipeProcessor && mediaPipeProcessor->isRunning()) {
         mediaPipeProcessor->stop();
+        std::cout << "MediaPipe processor stopped (onDisconnectClicked)" << std::endl;
     }
     
     statusLabel->setText("연결 안 됨");
@@ -376,12 +404,8 @@ void MainWindow::onWebcamModeClicked()
         disconnectButton->setEnabled(true);
         serverUrlEdit->setEnabled(false);
         
-        // MediaPipe 프로세서 시작
-        if (mediaPipeProcessor && !mediaPipeProcessor->isRunning()) {
-            if (!mediaPipeProcessor->start()) {
-                std::cerr << "Failed to start MediaPipe processor" << std::endl;
-            }
-        }
+        // MediaPipe 프로세서 시작 (웹캠 모드에서도 항상 사용)
+        startMediaPipeIfNeeded();
         
         // 비디오 타이머 시작
         videoTimer->start(33); // ~30 FPS
@@ -412,10 +436,8 @@ void MainWindow::onCharacterSelected(QListWidgetItem *item)
     
     // GLB 파일 로드 시도 (캐릭터별)
     QStringList glbPaths = {
-        QString("../resource/character%1.glb").arg(selectedCharacterIndex),
-        QString("../../resource/character%1.glb").arg(selectedCharacterIndex),
-        QString("resource/character%1.glb").arg(selectedCharacterIndex),
-        QString("/Users/jincheol/Desktop/VEDA/RtspProject/resource/character%1.glb").arg(selectedCharacterIndex)
+        QString("../resource/assets/Avatar01.glb").arg(selectedCharacterIndex),
+        QString("/Users/jincheol/Desktop/VEDA/RtspProject/client_user/resource/assets/Avatar01.glb").arg(selectedCharacterIndex)
     };
     
     bool loaded = false;
@@ -495,53 +517,51 @@ void MainWindow::updateVideoFrame()
 
 void MainWindow::onFaceDetected(const QVector<MediaPipeProcessor::FaceData> &faces)
 {
-    if (faces.isEmpty()) {
+    if (faces.isEmpty() || !videoQuick3DWidget) {
         return;
     }
-    
-    // 첫 번째 얼굴 데이터 사용
+
+    // 첫 번째 얼굴 사용
     const MediaPipeProcessor::FaceData &face = faces[0];
-    
-    // Blendshape 데이터 출력 (예시)
+
+    // 콘솔 출력 (디버그)
     std::cout << "=== Face Detected ===" << std::endl;
     std::cout << "Landmarks: " << face.landmarks.size() << " points" << std::endl;
     std::cout << "Blendshapes: " << face.blendshapes.size() << " values" << std::endl;
-    
-    // 주요 Blendshape 출력 (예시)
-    for (const auto &blendshape : face.blendshapes) {
-        if (blendshape.score > 0.1f) {  // 임계값 이상만 출력
-            std::cout << "  " << blendshape.category.toStdString() 
-                      << ": " << blendshape.score << std::endl;
+    for (const auto &bs : face.blendshapes) {
+        if (bs.score > 0.1f) {
+            std::cout << "  " << bs.category.toStdString()
+                      << ": " << bs.score << std::endl;
         }
     }
 
-    // 랜드마크에서 얼굴 영역 계산 (정규화된 좌표 0-1)
-    if (!face.landmarks.isEmpty() && videoQuick3DWidget) {
+    // 1) Blendshape score를 QList<qreal>로 변환 → 3D 아바타용
+    QList<qreal> blendScores;
+    for (const auto &bs : face.blendshapes) {
+        blendScores.append(static_cast<qreal>(bs.score));
+    }
+    videoQuick3DWidget->setBlendshapes(blendScores);
+
+    // 2) 랜드마크로 얼굴 박스 계산 → 위치/크기용 (이미 있던 로직)
+    if (!face.landmarks.empty()) {
         float minX = 1.0f, minY = 1.0f, maxX = 0.0f, maxY = 0.0f;
-        
         for (const auto &lm : face.landmarks) {
             minX = std::min(minX, lm.x);
             minY = std::min(minY, lm.y);
             maxX = std::max(maxX, lm.x);
             maxY = std::max(maxY, lm.y);
         }
-        
-        // 얼굴 중심 및 크기 계산 (정규화된 좌표)
-        double faceX = (minX + maxX) / 2.0;
-        double faceY = (minY + maxY) / 2.0;
-        double faceWidth = maxX - minX;
-        double faceHeight = maxY - minY;
 
-        // 값이 비정상적인 경우 보호
-        if (faceWidth < 0.0 || faceHeight < 0.0) {
+        double fx = (minX + maxX) / 2.0;
+        double fy = (minY + maxY) / 2.0;
+        double fw = maxX - minX;
+        double fh = maxY - minY;
+        if (fw < 0.0 || fh < 0.0)
             return;
-        }
-        
-        // VideoQuick3DWidget에 얼굴 데이터 전달 (QML 오버레이에서 사용)
-        videoQuick3DWidget->setFaceData(faceX, faceY, faceWidth, faceHeight);
+
+        videoQuick3DWidget->setFaceData(fx, fy, fw, fh);
     }
 }
-
 
 // MediaPipe 렌더링 함수 (주석 처리)
 /*
