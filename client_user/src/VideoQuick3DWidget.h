@@ -22,6 +22,8 @@ class VideoQuick3DWidget : public QQuickWidget
     Q_PROPERTY(double faceY READ faceY NOTIFY faceDataChanged)
     Q_PROPERTY(double faceWidth READ faceWidth NOTIFY faceDataChanged)
     Q_PROPERTY(double faceHeight READ faceHeight NOTIFY faceDataChanged)
+    // ▶ MediaPipe blendshape 값 (0.0 ~ 1.0) 배열 (QML에서는 JS array로 보임)
+    Q_PROPERTY(QList<qreal> blendshapes READ blendshapes NOTIFY blendshapesChanged)
 
 public:
     explicit VideoQuick3DWidget(QWidget *parent = nullptr);
@@ -33,6 +35,7 @@ public:
     void setAvatarIndex(int index);
     void setGlbModelPath(const QString &path);
     void setFaceData(double x, double y, double width, double height);
+    void setBlendshapes(const QList<qreal> &values);
     
     // Property getters
     int avatarIndex() const { return m_avatarIndex; }
@@ -42,12 +45,14 @@ public:
     double faceY() const { return m_faceY; }
     double faceWidth() const { return m_faceWidth; }
     double faceHeight() const { return m_faceHeight; }
+    QList<qreal> blendshapes() const { return m_blendshapes; }
 
 signals:
     void avatarIndexChanged();
     void glbModelPathChanged();
     void videoImageChanged();
     void faceDataChanged();
+    void blendshapesChanged();   // ▶ 추가
 
 private slots:
     void updateFaceData();
@@ -69,6 +74,8 @@ private:
     double m_faceY;
     double m_faceWidth;
     double m_faceHeight;
+    // ▶ MediaPipe blendshape 값 저장
+    QList<qreal> m_blendshapes;
 };
 
 #endif // VIDEOQUICK3DWIDGET_H
