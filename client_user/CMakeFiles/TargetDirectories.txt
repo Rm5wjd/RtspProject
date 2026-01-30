@@ -1,5 +1,0 @@
-/Users/jincheol/Desktop/VEDA/RtspProject/client_user/CMakeFiles/client_user.dir
-/Users/jincheol/Desktop/VEDA/RtspProject/client_user/CMakeFiles/edit_cache.dir
-/Users/jincheol/Desktop/VEDA/RtspProject/client_user/CMakeFiles/rebuild_cache.dir
-/Users/jincheol/Desktop/VEDA/RtspProject/client_user/CMakeFiles/client_user_autogen_timestamp_deps.dir
-/Users/jincheol/Desktop/VEDA/RtspProject/client_user/CMakeFiles/client_user_autogen.dir

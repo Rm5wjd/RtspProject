@@ -1,10 +1,12 @@
 #include "VideoQuick3DWidget.h"
 #include <QFileInfo>
 #include <QDir>
+#include <QUrl>
 #include <QQuickItem>
 #include <QQuickView>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QLibraryInfo>
 #include <QImage>
 #include <QPixmap>
 #include <QPainter>
@@ -72,6 +74,41 @@ VideoQuick3DWidget::VideoQuick3DWidget(QWidget *parent)
     // QML 엔진 설정
     QQmlEngine *engine = this->engine();
     QQmlContext *context = engine->rootContext();
+    
+    // Qt Quick3D import 경로 추가 (Homebrew 설치 경로)
+    QStringList importPaths = engine->importPathList();
+    QStringList quick3DPaths = {
+        "/opt/homebrew/Cellar/qtquick3d/6.10.1/share/qt/qml",  // Quick3D 실제 설치 경로
+        "/opt/homebrew/lib/qt6/qml",
+        "/opt/homebrew/share/qt6/qml",
+        QLibraryInfo::path(QLibraryInfo::Qml2ImportsPath)  // Qt 설치 경로
+    };
+    
+    // Homebrew의 qtquick3d 패키지 경로를 동적으로 찾기
+    QDir homebrewCellar("/opt/homebrew/Cellar/qtquick3d");
+    if (homebrewCellar.exists()) {
+        QStringList versions = homebrewCellar.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name | QDir::Reversed);
+        if (!versions.isEmpty()) {
+            QString latestVersion = versions.first();
+            QString qmlPath = QString("/opt/homebrew/Cellar/qtquick3d/%1/share/qt/qml").arg(latestVersion);
+            if (QDir(qmlPath).exists()) {
+                quick3DPaths.prepend(qmlPath);  // 최신 버전을 맨 앞에 추가
+            }
+        }
+    }
+    
+    for (const QString &path : quick3DPaths) {
+        if (QDir(path).exists() && !importPaths.contains(path)) {
+            engine->addImportPath(path);
+            std::cout << "Added QML import path: " << path.toStdString() << std::endl;
+        }
+    }
+    
+    // 현재 import 경로 목록 출력 (디버그용)
+    std::cout << "QML import paths:" << std::endl;
+    for (const QString &path : engine->importPathList()) {
+        std::cout << "  - " << path.toStdString() << std::endl;
+    }
     
     // 비디오 이미지 제공자 등록
     if (!g_videoImageProvider) {
@@ -194,16 +231,42 @@ void VideoQuick3DWidget::setAvatarIndex(int index)
 
 void VideoQuick3DWidget::setGlbModelPath(const QString &path)
 {
+    if (path.isEmpty()) {
+        if (m_glbModelPath != "") {
+            m_glbModelPath = "";
+            if (rootObject()) {
+                rootObject()->setProperty("glbModelPath", m_glbModelPath);
+            }
+            emit glbModelPathChanged();
+        }
+        return;
+    }
+    
+    // 1. 절대 경로로 변환
     QString absolutePath = QFileInfo(path).absoluteFilePath();
-    if (m_glbModelPath != absolutePath) {
-        m_glbModelPath = absolutePath;
+    
+    // 2. QUrl::fromLocalFile()을 사용하여 올바른 file:// URL 형식으로 변환
+    // macOS에서는 file:/// (슬래시 3개) 형식이 필요합니다
+    QUrl fileUrl = QUrl::fromLocalFile(absolutePath);
+    QString urlPath = fileUrl.toString();
+
+    // 3. 비교 및 업데이트
+    if (m_glbModelPath != urlPath) {
+        m_glbModelPath = urlPath;
+        
+        // C++ 객체 프로퍼티 업데이트
         if (rootObject()) {
             rootObject()->setProperty("glbModelPath", m_glbModelPath);
         }
+        
+        // 변경 알림
         emit glbModelPathChanged();
+        
+        // 디버깅 로그 확인
+        std::cout << "GLB Path Updated (QML): " << m_glbModelPath.toStdString() << std::endl;
+        std::cout << "  Absolute path: " << absolutePath.toStdString() << std::endl;
     }
 }
-
 void VideoQuick3DWidget::setFaceData(double x, double y, double width, double height)
 {
     if (m_faceX != x || m_faceY != y || m_faceWidth != width || m_faceHeight != height) {

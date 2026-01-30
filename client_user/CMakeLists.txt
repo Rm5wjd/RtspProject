@@ -12,22 +12,30 @@ set(CMAKE_AUTOUIC ON)
 # =======================
 # 1. Qt 찾기 (Qt6 우선, 없으면 Qt5 fallback)
 # =======================
-find_package(Qt6 COMPONENTS Core Widgets Multimedia OpenGL Quick QuickWidgets REQUIRED QUIET)
+find_package(Qt6 COMPONENTS Core Widgets Multimedia OpenGL Quick QuickWidgets QUIET)
 if(Qt6_FOUND)
     message(STATUS "Qt6 found: ${Qt6_VERSION}")
     set(QT_TARGET Qt6::Core Qt6::Widgets Qt6::Multimedia Qt6::OpenGL Qt6::Quick Qt6::QuickWidgets)
     
-    # Quick3D는 선택적 (있으면 사용, 없으면 2D로 대체)
-    # Quick3D Tools 의존성 문제를 피하기 위해 직접 찾지 않음
-    # 사용자가 설치하면 자동으로 감지됨
-    message(STATUS "Note: Qt Quick3D is optional. If installed, 3D rendering will be enabled.")
-    message(STATUS "To install: brew install qt6-qtquick3d (or qt5-qtquick3d for Qt5)")
+    # Quick3D는 런타임에 QML이 자동으로 찾음 (CMake에서 링크 불필요)
+    # Quick3DTools 의존성 문제를 피하기 위해 CMake에서는 찾지 않음
+    message(STATUS "Qt Quick3D will be loaded at runtime by QML engine")
+    message(STATUS "If Quick3D is installed (brew install qt6-qtquick3d), 3D rendering will work")
 else()
     find_package(Qt5 COMPONENTS Core Widgets Multimedia OpenGL Quick QuickWidgets REQUIRED)
     if(Qt5_FOUND)
         message(STATUS "Qt5 found: ${Qt5_VERSION}")
         set(QT_TARGET Qt5::Core Qt5::Widgets Qt5::Multimedia Qt5::OpenGL Qt5::Quick Qt5::QuickWidgets)
-        message(STATUS "Note: Qt Quick3D is optional. If installed, 3D rendering will be enabled.")
+        
+        # Quick3D 찾기 (선택적이지만 3D 렌더링에 필요)
+        find_package(Qt5 COMPONENTS Quick3D QUIET)
+        if(Qt5_Quick3D_FOUND)
+            message(STATUS "Qt5 Quick3D found - 3D rendering enabled")
+            list(APPEND QT_TARGET Qt5::Quick3D)
+        else()
+            message(WARNING "Qt5 Quick3D not found. 3D rendering will be disabled.")
+            message(STATUS "To install: brew install qt5-qtquick3d")
+        endif()
     else()
         message(FATAL_ERROR "Qt5 or Qt6 with QuickWidgets is required. Please install Qt with QuickWidgets module.")
     endif()

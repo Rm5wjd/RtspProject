@@ -42,10 +42,11 @@ Item {
         }
     }
     
-    // 3D 씬 로더 (Quick3D가 있을 때만)
+    // 3D 씬 로더 (Quick3D가 있을 때만) - Image 위에 렌더링되도록 z-order 조정
     Loader {
         id: scene3DLoader
         anchors.fill: parent
+        z: 1  // Image 위에 렌더링 (Image는 기본 z:0)
         source: quick3DAvailable ? "View3D.qml" : ""
         
         property bool quick3DAvailable: false
@@ -57,21 +58,31 @@ Item {
                 if (testComponent.status === Component.Ready) {
                     quick3DAvailable = true
                     source = "View3D.qml"
+                    console.log("[VideoScene] Quick3D available, loading View3D.qml")
+                } else {
+                    console.log("[VideoScene] Quick3D component status:", testComponent.status, testComponent.errorString())
                 }
             } catch(e) {
-                console.log("Qt Quick3D not available, using 2D fallback")
+                console.log("[VideoScene] Qt Quick3D not available:", e)
                 quick3DAvailable = false
             }
         }
         
         onLoaded: {
             if (item) {
+                console.log("[VideoScene] View3D loaded via Loader. avatarIndex=", root.avatarIndex, "glbModelPath=", root.glbModelPath)
                 item.avatarIndex = Qt.binding(function() { return root.avatarIndex })
                 item.glbModelPath = Qt.binding(function() { return root.glbModelPath })
                 item.faceX = Qt.binding(function() { return root.faceX })
                 item.faceY = Qt.binding(function() { return root.faceY })
                 item.faceWidth = Qt.binding(function() { return root.faceWidth })
                 item.faceHeight = Qt.binding(function() { return root.faceHeight })
+                // blendshapes도 명시적으로 바인딩 (View3D.qml 내부에서 videoWidget 참조가 꼬일 때 대비)
+                if (item.hasOwnProperty("blendshapes")) {
+                    item.blendshapes = Qt.binding(function() { return videoWidget ? videoWidget.blendshapes : [] })
+                }
+            } else {
+                console.log("[VideoScene] View3D Loader item is null")
             }
         }
     }

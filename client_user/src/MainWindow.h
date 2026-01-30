@@ -77,7 +77,12 @@ private:
     bool isConnected;
     bool isWebcamMode;  // 웹캠 모드 여부
     QTimer *videoTimer;
-    cv::VideoCapture videoCapture;
+    // ========================================================================
+    // 비디오 소스 관리 (카메라/RTSP/UDP)
+    // MainWindow에서만 카메라를 열고 관리합니다.
+    // MediaPipeProcessor는 프레임 데이터만 받아서 처리합니다.
+    // ========================================================================
+    cv::VideoCapture videoCapture;  // MainWindow에서만 관리
     
     // FPS 설정 (기본값: 30)
     int targetFPS;  // 목표 FPS

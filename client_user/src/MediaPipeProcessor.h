@@ -48,7 +48,11 @@ public:
     
     /**
      * 프레임을 큐에 추가하여 처리 요청
-     * @param frame OpenCV Mat 프레임
+     * 
+     * 주의: 이 클래스는 카메라를 직접 열지 않습니다.
+     * MainWindow에서 카메라를 열고, 읽은 프레임을 이 함수로 전달해야 합니다.
+     * 
+     * @param frame OpenCV Mat 프레임 (MainWindow에서 videoCapture.read()로 읽은 프레임)
      */
     void processFrame(const cv::Mat &frame);
     

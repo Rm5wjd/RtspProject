@@ -99,6 +99,12 @@ void MediaPipeProcessor::stop()
 
 void MediaPipeProcessor::processFrame(const cv::Mat &frame)
 {
+    // ========================================================================
+    // 이 함수는 MainWindow에서 읽은 프레임을 받아서 처리합니다.
+    // MediaPipeProcessor는 카메라를 직접 열지 않습니다.
+    // 카메라 관리는 MainWindow에서만 수행합니다.
+    // ========================================================================
+    
     if (!m_running) {
         return;
     }
