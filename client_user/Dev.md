@@ -3,305 +3,142 @@
 ## 개발 일자
 - 2026년 1월 23일: 초기 프로젝트 구조 및 OpenGL 렌더링 파이프라인 구현
 - 2026년 1월 26일: MediaPipe Python 임베딩 및 실시간 얼굴 탐지 구현
+- 2026년 1월 29일: Qt Quick3D 기반 3D 아바타 렌더링 및 Blendshape 매핑 완료
 
 ## 개발 목표
 RTSP 서버로부터 전송되는 영상 스트림을 받아서 실시간으로 얼굴을 인식하고, OpenGL을 사용하여 얼굴 위에 3D 아바타를 렌더링하는 클라이언트 프로그램 개발
 
-## 현재 문제점 및 개선 필요 사항
+## 현재 구현 상태
 
-### 1. dlib 얼굴 탐지 성능 문제
-**문제:**
-- dlib detector가 고해상도 이미지에서 매우 느림
-- 테스트 결과: 2316x3088 이미지에서 4581ms 소요 (0.21 fps)
-- 실시간 비디오 스트림 처리에 부적합
-- 현재 별도 스레드로 분리했지만, 여전히 느린 탐지로 인한 지연 가능
+### ✅ 완료된 기능
+1. **MediaPipe 기반 얼굴 탐지 및 Blendshape 추출**
+   - pybind11로 Python MediaPipe 임베딩
+   - 478개 랜드마크 + 52개 Blendshape 실시간 추출
+   - 5프레임마다 비동기 처리
 
-**해결 방안:**
-1. **이미지 리사이즈:** 처리 전에 640x480으로 축소 (10-50배 속도 향상)
-2. **YuNet 도입:** OpenCV YuNet 얼굴 탐지 모델 사용 (더 빠르고 정확)
-3. **하이브리드 방식:** YuNet으로 탐지 + dlib으로 landmark만 예측
-4. **dlib detector 최적화:** `upsample=0` 설정으로 속도 향상
+2. **Qt Quick3D 기반 3D 아바타 렌더링**
+   - GLB 모델 로드 (`Avatar02.glb`, `Avatar01.glb`)
+   - MediaPipe Blendshape → Morph Target 매핑 (52개 모두)
+   - 얼굴 위치/크기에 맞게 아바타 배치
 
-**참고:** `test/test_dev.md`에 상세한 최적화 방법과 성능 비교가 문서화되어 있음
+3. **다중 모드 지원**
+   - 웹캠 모드 (기본, 자동 시작)
+   - UDP 서버 연결 (포트 번호 입력)
+   - RTSP 스트림 연결 (URL 입력)
+   - 모든 모드에서 MediaPipe 자동 시작
 
-### 2. 프레임 처리 속도
-**현재 상태:**
-- dlib 탐지가 별도 스레드에서 실행되지만, 여전히 느림
-- 10프레임마다 처리하도록 설정했지만, 각 처리 시간이 길어 지연 발생 가능
-- 고해상도 웹캠 프레임(1280x720 등)에서 성능 저하
+4. **실시간 비디오 표시**
+   - QML Image Provider로 프레임 전달
+   - 30 FPS 실시간 렌더링
 
-**현재 구현:**
-- 별도 스레드로 dlib 처리 분리 (`dlibProcessingThread`)
-- 프레임 큐를 통한 비동기 처리
-- 10프레임마다 처리 (`dlibProcessInterval = 10`)
+### 🔄 개선 가능 사항
+1. **Blendshape 튜닝**
+   - 각 Blendshape의 weight 범위 최적화
+   - 주요 표정의 반응성 향상
 
-**개선 필요:**
-- YuNet으로 얼굴 탐지 속도 향상 (10-50ms)
-- 이미지 리사이즈로 처리 시간 단축
-- 예상 성능: 10-20 fps 달성 가능
+2. **성능 최적화**
+   - 처리 간격 조정 (현재 5프레임마다)
+   - 필요 시 입력 프레임 리사이즈 옵션 추가
 
-### 3. 성능 측정 부재
-**문제:**
-- 현재 프레임 처리 시간을 측정하지 않음
-- 실제 FPS를 모니터링하지 않음
-- 성능 병목 지점 파악 어려움
+3. **UI 개선**
+   - Blendshape 값 실시간 표시 (디버그용)
+   - 얼굴 탐지 상태 및 FPS 표시
+   - 캐릭터 선택 UI 개선
 
-**개선 필요:**
-- 각 단계별 처리 시간 측정 추가
-- FPS 모니터링 및 표시
-- 성능 로그 출력
+## 2026년 1월 23일 개발 내용
 
-## 오늘 개발한 내용
-
-### 1. 프로젝트 구조 생성
+### 초기 프로젝트 구조 생성
 - `client_user/` 디렉토리 생성
-- `client_user/src/main.cpp` - 메인 프로그램
-- `client_user/CMakeLists.txt` - 빌드 설정 파일
-- `resource/` 폴더 추가 (렌더링 관련 리소스 저장용)
-
-### 2. OpenGL 렌더링 파이프라인 구현
-- **GLFW 윈도우 생성**: 1280x720 해상도
-- **GLEW 초기화**: OpenGL 확장 로더
-- **셰이더 프로그램**: 
-  - Vertex Shader: 화면 전체를 덮는 쿼드 렌더링
-  - Fragment Shader: 비디오 텍스처 샘플링
-- **VAO/VBO/EBO 설정**: 비디오 프레임 렌더링을 위한 버퍼 설정
-- **텍스처 업로드**: OpenCV Mat을 OpenGL 텍스처로 변환
-
-### 3. 얼굴 인식 기능 구현
-- **OpenCV Haar Cascade 사용**: `haarcascade_frontalface_alt.xml` 모델 로드
-- **실시간 얼굴 검출**: 
-  - 그레이스케일 변환
-  - 히스토그램 균등화
-  - `detectMultiScale()` 함수 사용
-- **바운딩 박스 표시**: 
-  - OpenCV `cv::rectangle()` 사용하여 빨간색 박스 그리기
-  - 두께 3픽셀
-  - BGR 형식 (0, 0, 255) = 빨간색
-- **검출 정보 출력**: 콘솔에 얼굴 검출 개수 출력 (30프레임마다)
-
-### 4. 비디오 소스 처리
-- **로컬 비디오 모드** (`USE_LOCAL_VIDEO = 1`):
-  - MacBook 내장 카메라 지원 (인덱스 0)
-  - 비디오 파일 지원 (H.264 등)
-  - 카메라 해상도 설정 (1280x720)
-- **서버 스트림 모드** (`USE_LOCAL_VIDEO = 0`):
-  - TODO: RTSP 서버 스트림 연동 (향후 구현 예정)
-
-### 5. 리소스 파일 경로 처리
-- **다중 경로 지원**: 여러 가능한 경로에서 자동으로 리소스 파일 찾기
-  - `../resource/` (build/bin에서 실행 시)
-  - `../../resource/` (build에서 실행 시)
-  - `resource/` (프로젝트 루트에서 실행 시)
-  - 절대 경로 (백업)
-- **에러 메시지 개선**: 모든 시도한 경로를 표시하여 디버깅 용이
-
-### 6. 빌드 시스템 구성
-- **CMakeLists.txt 작성**:
-  - OpenCV, OpenGL, GLFW, GLEW 의존성 설정
-  - Mac M1 (Apple Silicon) 지원
-  - Ubuntu 지원
-- **플랫폼별 경로 처리**:
-  - Mac M1: `/opt/homebrew` 경로 자동 검색
-  - `/usr/local`의 오래된 OpenCV 설정 무시
-  - Homebrew prefix 자동 감지
-
-### 7. 문서화
-- `docs/client_user.md`: 개발 가이드 및 구현 단계 문서
-- `resource/README.md`: 리소스 폴더 설명
+- Qt 기반 UI 구조 설계
+- OpenCV 비디오 캡처 통합
 
 ## 기술 스택
 
 ### 사용된 라이브러리
-- **OpenCV 4.13.0**: 비디오 처리 및 얼굴 인식
-- **OpenGL 3.3 Core Profile**: 3D 렌더링
-- **GLFW**: 윈도우 관리 및 이벤트 처리
-- **GLEW**: OpenGL 확장 로더
+- **Qt6**: Widgets, Quick, QuickWidgets, Quick3D
+- **OpenCV 4.13.0**: 비디오 처리 및 캡처
+- **pybind11**: Python C++ 임베딩
+- **MediaPipe (Python)**: 얼굴 탐지 및 Blendshape 추출
+- **NumPy (Python)**: 이미지 데이터 변환
 
 ### 개발 환경
 - **플랫폼**: Mac M1 (Apple Silicon)
 - **컴파일러**: AppleClang 17.0.0
 - **C++ 표준**: C++17
-
-## 현재 구현 상태
-
-### ✅ 완료된 기능
-1. OpenGL 윈도우 생성 및 초기화
-2. 비디오 프레임 캡처 (카메라/비디오 파일)
-3. 비디오 프레임을 OpenGL 텍스처로 렌더링
-4. 실시간 얼굴 인식 (Haar Cascade)
-5. 얼굴 바운딩 박스 표시 (빨간색 사각형)
-6. 얼굴 검출 정보 콘솔 출력
-7. Mac M1 및 Ubuntu 빌드 지원
-8. 리소스 파일 자동 경로 검색
-
-### 🔄 진행 중
-- 기본 렌더링 파이프라인 안정화
-- 성능 최적화
-
-### ⏳ 예정된 기능
-1. **3D 아바타 렌더링** (Phase 3)
-   - 3D 모델 로더 구현
-   - 얼굴 위치에 아바타 배치
-   - 얼굴 크기에 맞춰 스케일 조정
-   - 텍스처 매핑 및 조명 처리
-
-2. **RTSP 서버 스트림 연동** (Phase 4)
-   - RTSP 클라이언트 구현
-   - H.264 스트림 수신 및 디코딩
-   - 네트워크 오류 처리 및 재연결 로직
-
-3. **성능 최적화** (Phase 5)
-   - 멀티스레딩을 통한 렌더링 성능 향상
-   - 얼굴 인식 정확도 개선
-   - 아바타 애니메이션 추가
+- **Python**: 3.14 (venv)
 
 ## 주요 코드 구조
 
-### 클래스: FaceAvatarRenderer
+### 클래스: MediaPipeProcessor
 ```cpp
-class FaceAvatarRenderer {
-    // OpenGL 관련
-    GLFWwindow* window;
-    GLuint textureID, shaderProgram;
-    GLuint VAO, VBO, EBO;
+class MediaPipeProcessor : public QObject {
+    // pybind11 기반 Python 임베딩
+    py::scoped_interpreter interpreter;
+    py::object process_frame_func;
     
-    // OpenCV 관련
-    cv::CascadeClassifier faceCascade;
-    cv::VideoCapture videoCapture;
+    // 비동기 프레임 처리
+    QTimer *processTimer;
+    std::queue<cv::Mat> frameQueue;
     
-    // 얼굴 검출 데이터
-    std::vector<AvatarData> detectedFaces;
-    
-    // 주요 메서드
-    bool initialize();           // 초기화
-    void setupOpenGL();         // OpenGL 설정
-    void detectFaces();         // 얼굴 인식
-    void renderVideoFrame();    // 비디오 프레임 렌더링
-    void renderAvatars();       // 아바타 렌더링 (향후 구현)
-    void run();                 // 메인 루프
-    void cleanup();             // 리소스 정리
+    // 시그널
+    void faceDetected(QVector<FaceData>);
+    void errorOccurred(QString);
 };
 ```
 
-## 빌드 및 실행
-
-### 빌드
-```bash
-cd client_user
-mkdir build
-cd build
-cmake ..
-make
+### 클래스: VideoQuick3DWidget
+```cpp
+class VideoQuick3DWidget : public QQuickWidget {
+    // QML property
+    Q_PROPERTY(int avatarIndex ...)
+    Q_PROPERTY(QString glbModelPath ...)
+    Q_PROPERTY(QList<qreal> blendshapes ...)
+    
+    // 얼굴 위치/크기
+    Q_PROPERTY(double faceX ...)
+    Q_PROPERTY(double faceY ...)
+    Q_PROPERTY(double faceWidth ...)
+    Q_PROPERTY(double faceHeight ...)
+};
 ```
-
-### 실행
-```bash
-cd build/bin
-./client_user
-```
-
-### 실행 전 확인 사항
-1. `resource/haarcascade_frontalface_alt.xml` 파일 존재 확인
-2. 카메라 권한 확인 (macOS)
-3. 비디오 파일 경로 확인 (비디오 파일 사용 시)
-
-## 테스트 결과
-
-### 성공한 기능
-- ✅ OpenGL 윈도우 생성
-- ✅ 비디오 프레임 렌더링
-- ✅ 얼굴 인식 및 바운딩 박스 표시
-- ✅ Mac M1 빌드 성공
-
-### 테스트 환경
-- **비디오 소스**: 
-  - MacBook 내장 카메라
-  - H.264 비디오 파일 (`hitto.h264`)
-- **해상도**: 1280x720
-- **프레임레이트**: ~30 FPS
 
 ## 알려진 이슈
 
-1. **OpenGL 3.3 Core Profile 호환성**
-   - `glBegin/glEnd` 사용 불가 (이미 제거됨)
-   - 바운딩 박스는 OpenCV로 직접 그리도록 변경
+1. **OpenCV/FFmpeg 중복 심볼 경고**
+   - Homebrew OpenCV/FFmpeg와 venv 내 `opencv-python`이 동시에 로드될 때 macOS에서 클래스 중복 경고 발생
+   - 현재는 기능에 큰 문제는 없으나, 필요시 시스템 OpenCV만 사용하거나 venv opencv를 제거하는 방향으로 정리 예정
 
-2. **리소스 파일 경로**
-   - 실행 위치에 따라 경로가 달라질 수 있음
-   - 다중 경로 검색으로 해결
+2. **Qt Quick3DTools 의존성**
+   - CMake에서 Quick3D를 찾을 때 Quick3DTools 의존성 오류 발생 가능
+   - 현재는 런타임 로드 방식으로 해결 (QML 엔진이 자동으로 찾음)
 
-3. **카메라 권한**
-   - macOS에서 처음 실행 시 권한 요청 필요
-   - 시스템 설정에서 수동으로 권한 부여 가능
-
-## 다음 개발 계획
-
-### 단기 (다음 세션)
-1. 3D 아바타 모델 로더 구현
-2. 기본 3D 아바타 렌더링 (간단한 큐브나 구체)
-3. 얼굴 위치에 아바타 배치
-
-### 중기
-1. RTSP 서버 스트림 연동
-2. 네트워크 오류 처리
-3. 성능 최적화
-
-### 장기
-1. 더 정교한 얼굴 인식 모델 (DNN 기반)
-2. 아바타 애니메이션
-3. 멀티 얼굴 지원
-4. UI 개선
-
-## 참고 자료
-
-- OpenCV 공식 문서: https://docs.opencv.org/
-- OpenGL 튜토리얼: https://learnopengl.com/
-- GLFW 문서: https://www.glfw.org/docs/latest/
-- 프로젝트 문서: `docs/client_user.md`
-
-## 개발 노트
-
-### 2026-01-23 주요 변경사항
-- 초기 프로젝트 구조 생성
-- OpenGL 렌더링 파이프라인 구현
-- 얼굴 인식 기능 구현
-- 바운딩 박스 표시 기능 추가
-- Mac M1 빌드 지원 완료
-- 리소스 파일 경로 처리 개선
-
-### 기술적 결정사항
-1. **OpenCV로 바운딩 박스 그리기**: OpenGL 3.3 Core Profile의 제약을 피하기 위해 OpenCV의 `cv::rectangle()` 사용
-2. **다중 경로 리소스 검색**: 실행 위치에 독립적으로 작동하도록 여러 경로 시도
-3. **Homebrew 자동 감지**: Mac M1에서 OpenCV 경로를 자동으로 찾도록 구현
+3. **GLB 모델 Morph Target 이름**
+   - Avatar02.glb의 Morph Target 이름이 MediaPipe Blendshape 이름과 정확히 일치해야 함
+   - Blender에서 Shape Key 이름을 확인하여 매핑 필요
 
 ---
 
 ## 2026년 1월 26일 개발 내용
 
 ### 주요 성과
-✅ **MediaPipe Python 임베딩 구현 완료**
-- Python C API를 사용하여 같은 프로세스 내에서 MediaPipe 직접 호출
-- JSON 파싱 없이 직접 값으로 반환 (성능 향상)
+✅ **MediaPipe Python 임베딩 구현 완료 (pybind11 embed)**
+- pybind11 `scoped_interpreter`로 같은 프로세스 내에서 Python 런타임 임베딩
+- `mediapipe_module.py`에서 MediaPipe FaceLandmarker를 직접 호출
+- QProcess/JSON 없이 C++에서 바로 Python 함수를 호출 (성능 및 구조 단순화)
 - venv 경로 자동 감지 및 Python 경로 설정
-- 실시간 얼굴 탐지 및 화면 표시 구현
+- 실시간 얼굴 탐지 + Blendshape 추출 + 화면 표시 구현
 
 ### 구현된 기능
 
-#### 1. Python 사이드카 패턴 → Python C API 임베딩으로 전환
+#### 1. Python 사이드카 패턴 → pybind11 기반 임베딩으로 전환
 **초기 계획:**
-- Python 프로세스를 별도로 실행하고 JSON으로 통신하는 사이드카 패턴
+- Python 프로세스를 별도로 실행하고 JSON으로 통신하는 사이드카 패턴 (`mediapipe_processor.py` + QProcess)
 
 **최종 구현:**
-- Python C API를 사용하여 같은 프로세스 내에서 직접 호출
-- `QProcess` 대신 `PyObject`로 직접 함수 호출
-- JSON 파싱 오버헤드 제거
-- 프로세스 간 통신 오버헤드 제거
-
-**장점:**
-- 더 빠른 통신 (프로세스 간 통신 없음)
-- 메모리 효율적 (cv::Mat을 numpy array로 직접 변환)
-- 간단한 에러 처리 (Python 예외 직접 처리)
+- pybind11 `scoped_interpreter`를 사용하여 같은 프로세스 내에서 Python을 직접 임베딩
+- `mediapipe_module.py`의 `initialize()` / `process_frame()`을 C++에서 바로 호출
+- QProcess/JSON 파이프 통신 제거 → 구조 단순화, 디버깅 용이
+- 프로세스 간 통신/직렬화 오버헤드 제거
 
 #### 2. MediaPipe 얼굴 탐지 및 Blendshape 추출
 **구현 내용:**
@@ -317,9 +154,10 @@ def process_frame(image_array, width, height) -> dict | None
 ```
 
 **C++ 클래스 (`MediaPipeProcessor`):**
-- `start()`: Python 초기화 및 MediaPipe 모델 로드
-- `processFrame(frame)`: 프레임을 큐에 추가하여 비동기 처리
-- `faceDetected` 시그널: 얼굴 탐지 결과 전달
+- `start()`: 임베디드 Python 초기화 및 MediaPipe 모델 로드 (한 번만)
+- `processFrame(frame)`: 프레임을 큐에 추가하여 비동기 처리 (N프레임마다)
+- `faceDetected` 시그널: 얼굴 탐지 결과(랜드마크 + Blendshape) 전달
+- `errorOccurred` 시그널: Python 예외/모듈 로드 실패 등 에러 전달
 
 #### 3. venv 경로 자동 감지
 **문제:**
@@ -331,34 +169,46 @@ def process_frame(image_array, width, height) -> dict | None
 - venv의 site-packages 경로를 `sys.path`에 자동 추가
 - 상대/절대 경로 모두 지원
 
-#### 4. 실시간 얼굴 표시
-**OpenCV로 프레임에 직접 그리기:**
-- 478개 랜드마크를 초록색 점으로 표시
+#### 4. 실시간 얼굴/아바타 표시
+**OpenCV로 프레임에 직접 그리기 (디버그용):**
+- MediaPipe 랜드마크를 초록색 점으로 표시
 - 얼굴 영역을 노란색 박스로 표시
 
-**QML에서 얼굴 영역 표시:**
-- 정규화된 좌표(0-1)로 얼굴 위치 계산
-- 반투명 Rectangle로 얼굴 영역 표시
-- `faceWidth > 0 && faceHeight > 0`일 때만 표시
+**QML에서 2D/3D 오버레이:**
+- 정규화된 좌표(0-1)로 얼굴 위치/크기 계산 → `faceX`, `faceY`, `faceWidth`, `faceHeight`
+- `VideoScene.qml`에서 반투명 Rectangle로 얼굴 영역 표시 (`faceWidth > 0 && faceHeight > 0`일 때)
+- `View3D.qml`에서 `Avatar02.glb`를 로드하여 얼굴 위치/크기에 맞게 배치
+- MediaPipe Blendshape(52개)를 `blendshapes` 배열로 넘겨, `MorphTarget` weight로 매핑 (눈 깜빡임, 입 벌림, 미소 등)
 
 **데이터 흐름:**
 ```
-MediaPipe Python → FaceData 구조체 → MainWindow::onFaceDetected()
-→ VideoQuick3DWidget::setFaceData() → QML property 업데이트
-→ 화면에 실시간 표시
+MediaPipe (Python) → dict(landmarks, blendshapes)
+    ↓ pybind11
+MediaPipeProcessor::FaceData (C++)
+    ↓ 시그널
+MainWindow::onFaceDetected()
+    ↓
+VideoQuick3DWidget::setFaceData(), setBlendshapes()
+    ↓
+QML (VideoScene.qml, View3D.qml)에서 오버레이 + 3D 아바타 렌더링
 ```
 
 ### 기술 스택 추가
 
 #### Python 관련
-- **Python3 C API**: Python 임베딩
-- **NumPy**: cv::Mat ↔ numpy array 변환
-- **MediaPipe**: 얼굴 탐지 및 Blendshape 추출
+- **pybind11 (embed)**: Python 임베딩 및 C++ ↔ Python 호출
+- **NumPy (Python)**: `mediapipe_module.py`에서 cv::Mat ↔ numpy array 변환 담당
+- **MediaPipe (Python)**: 얼굴 탐지 및 Blendshape 추출
 
-#### CMake 설정
-- `find_package(Python3 COMPONENTS Interpreter Development NumPy REQUIRED)`
-- 시스템 Python 사용 (venv는 site-packages만 추가)
-- NumPy 헤더 경로 자동 감지
+#### Qt Quick3D 관련
+- **Qt Quick3D**: 3D 아바타 렌더링 (GLB 모델 로드, Morph Target 지원)
+- **QML Loader**: 런타임에 View3D.qml 동적 로드
+- **Homebrew qtquick3d**: `/opt/homebrew/Cellar/qtquick3d/6.10.1/share/qt/qml` 경로 자동 감지
+
+#### 빌드/런타임
+- pybind11는 헤더 전용 라이브러리로 포함 (`<pybind11/embed.h>`, `<pybind11/numpy.h>`)
+- 런타임에는 Python 3 + `mediapipe`, `opencv-python`, `numpy` 패키지가 필요
+- Qt Quick3D는 런타임에 QML 엔진이 자동으로 로드 (CMake 링크 불필요)
 
 ### 해결한 문제들
 
@@ -402,42 +252,154 @@ MediaPipe Python → FaceData 구조체 → MainWindow::onFaceDetected()
 - numpy array로 직접 변환 (복사 최소화)
 - 큐 크기 제한 (최대 5개 프레임)
 
-### 파일 구조
+### 파일 구조 (MediaPipe 관련)
 
 ```
 client_user/
 ├── python/
-│   ├── mediapipe_module.py      # MediaPipe Python 모듈
-│   ├── mediapipe_processor.py   # (구버전, 사용 안 함)
-│   ├── requirements.txt          # Python 의존성
-│   └── README_EMBEDDED.md       # Python 임베딩 사용법
+│   ├── mediapipe_module.py       # MediaPipe Python 모듈 (FaceLandmarker + Blendshape)
+│   ├── mediapipe_processor.py    # (구버전, QProcess JSON 방식 – 참고용)
+│   ├── requirements.txt          # Python 의존성 (mediapipe, opencv-python, numpy)
+│   └── MEDIAPIPE_ARCHITECTURE.md # 임베딩 아키텍처 문서
 ├── src/
-│   ├── MediaPipeProcessor.h     # MediaPipe 프로세서 헤더
-│   └── MediaPipeProcessor.cpp    # Python C API 구현
+│   ├── MediaPipeProcessor.h      # pybind11 기반 MediaPipe 브리지 (C++)
+│   ├── MediaPipeProcessor.cpp     # Python 임베딩 + 프레임 큐 + 결과 파싱
+│   ├── VideoQuick3DWidget.*      # QQuickWidget + QML, 얼굴 위치/Blendshape 전달
+│   └── MainWindow.*              # 비디오 캡처, 모드 전환, MediaPipeProcessor 연동
+├── qml/
+│   ├── VideoScene.qml            # 비디오 배경 + View3D Loader
+│   └── View3D.qml                # Qt Quick3D 아바타 렌더링 + MorphTarget 매핑
 └── thirdparty/
     └── mediapipe/
         └── models/
-            └── face_landmarker.task  # MediaPipe 모델 파일
+            └── face_landmarker.task  # MediaPipe FaceLandmarker 모델 파일
 ```
+
+---
+
+## 2026년 1월 29일 개발 내용
+
+### 주요 성과
+✅ **Qt Quick3D 기반 3D 아바타 렌더링 구현 완료**
+- Qt Quick3D를 사용하여 GLB 모델(`Avatar02.glb`) 로드 및 렌더링
+- MediaPipe Blendshape 52개를 Avatar02.glb의 Morph Target에 정확히 매핑
+- 웹캠/RTSP/UDP 모든 모드에서 MediaPipe 자동 시작
+- Qt Quick3D import 경로 자동 감지 및 설정
+
+### 구현된 기능
+
+#### 1. Qt Quick3D 통합
+**구현 내용:**
+- `View3D.qml`에서 `Model` 컴포넌트로 GLB 파일 로드
+- `MorphTarget`을 사용하여 Blendshape 값을 모델의 표정에 반영
+- 카메라/조명 설정으로 3D 씬 구성
+- 비디오 Image 위에 3D 모델 오버레이 (`z-order` 조정)
+
+**해결한 문제:**
+- Qt Quick3D 모듈을 찾지 못하는 문제 → Homebrew 설치 경로 자동 감지
+- Quick3DTools 의존성 오류 → 런타임 로드 방식으로 변경
+- QML import 경로 설정 → `VideoQuick3DWidget`에서 동적으로 추가
+
+#### 2. MediaPipe Blendshape → Avatar02.glb 매핑
+**구현 내용:**
+- MediaPipe의 52개 Blendshape를 정확한 인덱스로 매핑
+- `View3D.qml`의 `morphTargets`에 모든 Blendshape 포함:
+  - 눈 관련: `eyeBlinkLeft`, `eyeBlinkRight`, `eyeSquintLeft`, `eyeSquintRight`, `eyeLookDownLeft`, 등 (14개)
+  - 눈썹 관련: `browInnerUp`, `browOuterUpLeft`, `browDownLeft` 등 (5개)
+  - 입 관련: `jawOpen`, `mouthSmileLeft`, `mouthPucker`, `mouthShrugLower` 등 (23개)
+  - 코/볼/혀: `noseSneerLeft`, `cheekPuff`, `tongueOut` 등 (10개)
+
+**매핑 방식:**
+- MediaPipe blendshape 배열 인덱스를 정확히 매칭 (예: `eyeBlinkLeft` = `blendshapes[9]`)
+- 각 `MorphTarget`의 `weight`를 `blendshapes[index] * 100.0`으로 설정
+
+#### 3. 모드 전환 시 MediaPipe 자동 관리
+**구현 내용:**
+- `onWebcamModeClicked()`: 웹캠 시작 시 MediaPipe 자동 시작
+- `onConnectClicked()`: 서버 연결 시 MediaPipe 자동 시작 (UDP/RTSP 모두)
+- `onDisconnectClicked()`: 연결 해제 시 MediaPipe 중지
+- `startMediaPipeIfNeeded()`: 공통 함수로 중복 시작 방지
+
+**결과:**
+- 모드 전환 시 MediaPipe가 항상 정상적으로 재시작됨
+- 웹캠/서버 모드 모두에서 얼굴 탐지 및 아바타 렌더링 동작
+
+#### 4. GLB 파일 경로 자동 감지
+**구현 내용:**
+- `onCharacterSelected()`에서 여러 경로 후보 시도:
+  - 절대 경로 우선 (`/Users/jincheol/Desktop/VEDA/RtspProject/resource/assets/`)
+  - 실행 위치 기반 상대 경로
+  - 캐릭터 0번 → `Avatar02.glb`, 나머지 → `Avatar01.glb`
+
+**해결한 문제:**
+- 실행 위치에 따라 경로가 깨지는 문제 → 다중 경로 시도로 해결
+- `QString::arg()` 오류 → 경로 문자열 직접 구성으로 수정
+
+### 해결한 문제들
+
+#### 1. Qt Quick3D 모듈을 찾을 수 없음
+**문제:**
+- `module "QtQuick3D" version 1.15 is not installed` 에러
+- QML 엔진이 Quick3D 모듈을 찾지 못함
+
+**해결:**
+- Homebrew의 qtquick3d 설치 경로를 동적으로 감지 (`/opt/homebrew/Cellar/qtquick3d/6.10.1/share/qt/qml`)
+- `VideoQuick3DWidget`에서 QML 엔진에 import 경로 추가
+- 런타임 로드 방식으로 Quick3DTools 의존성 문제 회피
+
+#### 2. View3D.qml이 로드되지 않음
+**문제:**
+- QML 문법 오류 (`morphTargets` 배열에서 콤마 누락)
+- Loader가 View3D를 로드하지 못함
+
+**해결:**
+- 모든 `MorphTarget` 사이에 콤마 추가
+- 디버그 로그 추가하여 로드 상태 확인
+
+#### 3. 3D 모델이 화면에 안 보임
+**문제:**
+- GLB 파일은 로드되지만 모델이 안 보임
+- 카메라 위치/스케일 문제
+
+**해결:**
+- 카메라 거리 조정 (`position: Qt.vector3d(0, 0, 10)`)
+- 모델 스케일 확대 (`faceWidth * 5.0`, 최소 1.0 보장)
+- 모델 Z 위치 조정 (`-2.0`으로 카메라 앞에 배치)
+- View3D Loader에 `z: 1` 설정하여 Image 위에 렌더링
+
+### 성능
+
+**처리 속도:**
+- MediaPipe 얼굴 탐지: ~30-50ms (5프레임마다 처리)
+- Blendshape 추출: MediaPipe 내부 처리 (추가 오버헤드 없음)
+- 3D 렌더링: Qt Quick3D 하드웨어 가속 (Metal on macOS)
+- 프레임 표시: 실시간 (30 FPS)
+
+**메모리:**
+- numpy array 변환 시 필요 최소한의 복사만 수행
+- 프레임 큐 크기 제한 (최대 5개 프레임)
+- GLB 모델은 Qt Quick3D가 효율적으로 관리
 
 ### 다음 단계
 
-1. **Blendshape를 활용한 아바타 제어**
-   - 눈 깜빡임 (`eyeBlinkLeft`, `eyeBlinkRight`)
-   - 입 벌림 (`jawOpen`)
-   - 표정 변화 (`mouthSmileLeft`, `mouthSmileRight` 등)
+1. **Blendshape 튜닝 및 최적화**
+   - 각 Blendshape의 weight 범위 조정 (0-100 → 더 자연스러운 범위)
+   - 주요 표정(눈 깜빡임, 미소 등)의 반응성 향상
 
-2. **성능 최적화**
-   - 처리 간격 조정 (현재 5프레임마다)
-   - 이미지 리사이즈 옵션 추가
-   - 멀티스레딩 최적화
+2. **다중 캐릭터 지원**
+   - 캐릭터별 GLB 파일 매핑 확장
+   - 각 캐릭터의 Morph Target 이름 차이 대응
 
 3. **UI 개선**
-   - Blendshape 값 실시간 표시
-   - 얼굴 탐지 상태 표시
-   - 처리 FPS 표시
+   - Blendshape 값 실시간 표시 (디버그용)
+   - 얼굴 탐지 상태 및 FPS 표시
+   - 캐릭터 선택 UI 개선
+
+4. **RTSP/UDP 모드 안정화**
+   - 네트워크 패킷 손실에 대한 강건성 향상
+   - 재연결 로직 개선
 
 ### 참고 자료
 - MediaPipe Face Landmarker: https://developers.google.com/mediapipe/solutions/vision/face_landmarker
-- Python C API: https://docs.python.org/3/c-api/
-- NumPy C API: https://numpy.org/doc/stable/reference/c-api/
+- pybind11 임베딩: https://pybind11.readthedocs.io/en/stable/advanced/embedding.html
+- Qt Quick3D: https://doc.qt.io/qt-6/qtquick3d-index.html

@@ -433,12 +433,34 @@ void MainWindow::onCharacterSelected(QListWidgetItem *item)
     selectedCharacterIndex = characterList->row(item);
     
     std::cout << "캐릭터 " << selectedCharacterIndex << " 선택됨" << std::endl;
+
+    // QML 쪽 avatarIndex 갱신 (View3D.avatarIndex >= 0 이어야 보임)
+    if (videoQuick3DWidget) {
+        videoQuick3DWidget->setAvatarIndex(selectedCharacterIndex);
+    }
     
     // GLB 파일 로드 시도 (캐릭터별)
-    QStringList glbPaths = {
-        QString("../resource/assets/Avatar01.glb").arg(selectedCharacterIndex),
-        QString("/Users/jincheol/Desktop/VEDA/RtspProject/client_user/resource/assets/Avatar01.glb").arg(selectedCharacterIndex)
-    };
+    // 현재는 캐릭터 0번은 Avatar02.glb, 나머지는 Avatar01.glb 사용
+    QStringList glbPaths;
+    const QString fileName = (selectedCharacterIndex == 0) ? "Avatar02.glb" : "Avatar01.glb";
+
+    // 절대 경로를 우선순위로 (가장 확실함)
+    const QString absolutePath = QString("/Users/jincheol/Desktop/VEDA/RtspProject/resource/assets/%1").arg(fileName);
+    
+    // 실행 위치 기반 상대 경로들 (다양한 빌드/실행 시나리오 대응)
+    const QString appDir = QCoreApplication::applicationDirPath(); // 보통 client_user/build/bin
+    const QString projectRoot1 = QDir(appDir).absoluteFilePath("../../.."); // client_user/build/bin -> RtspProject
+    const QString projectRoot2 = QDir(appDir).absoluteFilePath("../../");   // client_user/build/bin -> client_user
+    const QString assetsDir1 = QDir(projectRoot1).absoluteFilePath("resource/assets");
+    const QString assetsDir2 = QDir(projectRoot2).absoluteFilePath("../resource/assets");
+
+    // 여러 후보 경로를 시도 (절대 경로 우선)
+    glbPaths << absolutePath                                                    // 절대 경로 (최우선)
+             << QDir(assetsDir1).absoluteFilePath(fileName)                    // RtspProject/resource/assets
+             << QDir(assetsDir2).absoluteFilePath(fileName)                    // client_user/../resource/assets
+             << QDir(appDir).absoluteFilePath(QString("../../../resource/assets/%1").arg(fileName))
+             << QDir(appDir).absoluteFilePath(QString("../../resource/assets/%1").arg(fileName))
+             << QDir(appDir).absoluteFilePath(QString("../resource/assets/%1").arg(fileName));
     
     bool loaded = false;
     QString glbPath;
@@ -472,7 +494,13 @@ void MainWindow::updateVideoFrame()
     
     cv::Mat frame;
     
+    // ========================================================================
+    // 카메라/비디오 소스는 MainWindow에서만 관리
+    // MediaPipeProcessor는 프레임 데이터만 받아서 처리합니다.
+    // ========================================================================
+    
     // 웹캠 모드 또는 서버 연결 모드 모두 OpenCV VideoCapture 사용
+    // videoCapture는 MainWindow에서만 열고 관리합니다.
     if (videoCapture.isOpened()) {
         bool success = videoCapture.read(frame);  // read() 사용 (더 안정적)
         if (!success || frame.empty()) {
@@ -488,7 +516,10 @@ void MainWindow::updateVideoFrame()
         return;
     }
     
+    // ========================================================================
     // MediaPipe 프로세서에 프레임 전달 (비동기 처리)
+    // MediaPipeProcessor는 카메라를 열지 않고, 프레임 데이터만 받아서 처리합니다.
+    // ========================================================================
     if (mediaPipeProcessor && mediaPipeProcessor->isRunning()) {
         mediaPipeProcessor->processFrame(frame);
     }
