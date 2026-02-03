@@ -4,9 +4,37 @@
 - 2026년 1월 23일: 초기 프로젝트 구조 및 OpenGL 렌더링 파이프라인 구현
 - 2026년 1월 26일: MediaPipe Python 임베딩 및 실시간 얼굴 탐지 구현
 - 2026년 1월 29일: Qt Quick3D 기반 3D 아바타 렌더링 및 Blendshape 매핑 완료
+- 2026년 1월 30일: **Unity로 전환 결정** (Qt Quick3D의 Morph Target 제한 문제)
 
 ## 개발 목표
-RTSP 서버로부터 전송되는 영상 스트림을 받아서 실시간으로 얼굴을 인식하고, OpenGL을 사용하여 얼굴 위에 3D 아바타를 렌더링하는 클라이언트 프로그램 개발
+RTSP 서버로부터 전송되는 영상 스트림을 받아서 실시간으로 얼굴을 인식하고, **Unity를 사용하여** 얼굴 위에 3D 아바타를 렌더링하는 클라이언트 프로그램 개발
+
+## 현재 아키텍처 (Unity 전환)
+
+### 전체 구조
+```
+Qt Client (C++)
+  ├─ 카메라/비디오 소스 관리 (MainWindow)
+  ├─ MediaPipe (Python) → 52개 Blendshape 추출
+  ├─ Unity 프로세스 (별도 실행)
+  │   ├─ MediaPipe 데이터 수신 (TCP/UDP)
+  │   ├─ GLB 모델 로드 및 52개 BlendShape 적용
+  │   └─ 렌더링된 이미지를 네트워크로 전송
+  └─ Qt에서 Unity 렌더링 이미지를 QML에 표시
+```
+
+### 왜 Unity로 전환했나?
+
+#### Qt Quick3D의 한계
+- **Morph Target 제한**: GPU Attribute 슬롯이 최대 8~16개로 제한됨
+- **52개 Blendshape 불가**: MediaPipe는 52개 Blendshape를 제공하지만, Qt Quick3D는 8개만 지원
+- **결과**: 눈을 깜빡였는데 입이 벌어지는 등 잘못된 매핑 발생
+- **에러**: `exceeds 8 attributes` 오류 발생
+
+#### Unity의 장점
+- **52개 BlendShape 완전 지원**: Unity는 BlendShape를 제한 없이 지원
+- **고성능 렌더링**: Unity의 최적화된 렌더링 파이프라인
+- **표준 GLB 지원**: GLB 파일의 모든 BlendShape를 정확히 매핑
 
 ## 현재 구현 상태
 
@@ -15,21 +43,32 @@ RTSP 서버로부터 전송되는 영상 스트림을 받아서 실시간으로 
    - pybind11로 Python MediaPipe 임베딩
    - 478개 랜드마크 + 52개 Blendshape 실시간 추출
    - 5프레임마다 비동기 처리
+   - **카메라는 MainWindow에서만 관리, MediaPipeProcessor는 프레임 데이터만 받아서 처리**
 
-2. **Qt Quick3D 기반 3D 아바타 렌더링**
-   - GLB 모델 로드 (`Avatar02.glb`, `Avatar01.glb`)
-   - MediaPipe Blendshape → Morph Target 매핑 (52개 모두)
-   - 얼굴 위치/크기에 맞게 아바타 배치
-
-3. **다중 모드 지원**
+2. **다중 모드 지원**
    - 웹캠 모드 (기본, 자동 시작)
    - UDP 서버 연결 (포트 번호 입력)
    - RTSP 스트림 연결 (URL 입력)
    - 모든 모드에서 MediaPipe 자동 시작
 
-4. **실시간 비디오 표시**
+3. **실시간 비디오 표시**
    - QML Image Provider로 프레임 전달
    - 30 FPS 실시간 렌더링
+
+### 🔄 진행 중 (Unity 전환)
+1. **Unity 프로젝트 구조 생성**
+   - MediaPipe 데이터 수신 스크립트 (`MediaPipeReceiver.cs`)
+   - BlendShape 적용 스크립트 (`BlendShapeController.cs`)
+   - 렌더링 결과 출력 스크립트 (`RenderTextureExporter.cs`)
+
+2. **Qt ↔ Unity 통신**
+   - MediaPipe Blendshape 데이터를 Unity로 전송 (TCP/UDP)
+   - Unity 렌더링 이미지를 Qt로 수신하여 표시
+
+### ❌ 중단된 기능 (Qt Quick3D)
+- **Qt Quick3D 기반 3D 아바타 렌더링**: Morph Target 제한으로 인해 8개만 지원 가능
+- **View3D.qml**: 현재는 사용하지 않음 (Unity 전환으로 인해)
+- **참고**: 코드는 남아있지만, Unity 전환으로 인해 비활성화됨
 
 ### 🔄 개선 가능 사항
 1. **Blendshape 튜닝**
