@@ -19,9 +19,9 @@ Qt 기반 RTSP/UDP/웹캠 클라이언트 프로그램으로, 스트림을 받�
 
 ### 필수
 - Qt6 (Widgets, Quick, QuickWidgets)
-- Qt Quick3D (`brew install qt6-qtquick3d`)
 - OpenCV 4.x (VideoCapture, imgproc)
 - Python 3.10 이상 + `mediapipe`, `opencv-python`, `numpy`
+- Unity 2022.3 이상 (3D 아바타 렌더링용)
 - CMake 3.16 이상
 - C++17 지원 컴파일러
 
@@ -39,8 +39,14 @@ pip3 install -r requirements.txt
 
 ### GLB 모델 파일
 
-- `resource/assets/Avatar02.glb` (캐릭터 0번)
-- `resource/assets/Avatar01.glb` (캐릭터 1번 이상)
+- `resource/assets/Avatar02.glb` (캐릭터 0번) - Unity 프로젝트에 복사 필요
+- `resource/assets/Avatar01.glb` (캐릭터 1번 이상) - Unity 프로젝트에 복사 필요
+
+### Unity 프로젝트
+
+- `unity_avatar/` 디렉토리에 Unity 프로젝트가 있습니다.
+- Unity Hub에서 프로젝트를 열고 빌드하세요.
+- 자세한 내용은 `unity_avatar/README.md`를 참조하세요.
 
 ## 빌드
 
@@ -73,8 +79,8 @@ cd build/bin
 
 3. **캐릭터 선택**  
    - 하단의 캐릭터 목록에서 원하는 캐릭터를 클릭  
-   - 캐릭터 0번 → `Avatar02.glb`, 나머지 → `Avatar01.glb`가 로드됩니다.
-   - 얼굴 위치/크기에 맞게 3D 아바타가 배치되고, Blendshape 값에 따라 눈, 입, 표정이 실시간으로 변합니다.
+   - 캐릭터 0번 → `Avatar02.glb`, 나머지 → `Avatar01.glb`가 Unity에서 로드됩니다.
+   - Unity에서 52개 Blendshape를 모두 적용하여 표정이 실시간으로 변합니다.
 
 4. **연결 해제**  
    - "연결 해제" 버튼 클릭  
@@ -101,16 +107,17 @@ QStringList characters = {"캐릭터 1", "캐릭터 2", "캐릭터 3", "캐릭�
 
 ## 아바타 렌더링 커스터마이징
 
-- `View3D.qml`에서 `Avatar02.glb`를 사용하는 3D 아바타 렌더링 로직을 수정할 수 있습니다.
-- `morphTargets` 섹션에서 MediaPipe Blendshape 인덱스 ↔ GLB 내 Morph 이름을 매핑합니다.
+- Unity 프로젝트 (`unity_avatar/`)에서 3D 아바타 렌더링 로직을 수정할 수 있습니다.
+- `BlendShapeController.cs`에서 MediaPipe Blendshape 이름 ↔ Unity BlendShape 인덱스를 매핑합니다.
 - 필요 시 다른 GLB 파일로 교체하여 다른 캐릭터를 사용할 수 있습니다.
+- 자세한 내용은 `unity_avatar/README.md`를 참조하세요.
 
 ## 문제 해결
 
-### Qt Quick3D 모듈을 찾을 수 없음
-- Qt Quick3D가 설치되어 있는지 확인: `brew install qt6-qtquick3d`
-- 실행 시 콘솔에 `Added QML import path: ...` 로그가 있는지 확인
-- 없으면 `VideoQuick3DWidget.cpp`의 import 경로 설정 확인
+### Unity 관련
+- Unity 프로젝트가 빌드되었는지 확인: `unity_avatar/Build/UnityAvatar.app`
+- Unity와 Qt 간 네트워크 통신이 정상인지 확인 (포트 12345, 12346)
+- Unity 콘솔 로그 확인: MediaPipe 데이터 수신 및 BlendShape 적용 상태
 
 ### MediaPipe 관련
 - Python 패키지가 누락된 경우: `pip3 install -r client_user/python/requirements.txt`
@@ -121,11 +128,11 @@ QStringList characters = {"캐릭터 1", "캐릭터 2", "캐릭터 3", "캐릭�
 - 포트 번호/RTSP URL이 올바른지 확인하세요.
 - 방화벽 설정을 확인하세요.
 
-### GLB 모델이 안 보임
-- GLB 파일 경로 확인 (`resource/assets/Avatar02.glb`)
-- 콘솔에 `GLB 파일 찾음: ...` 로그가 있는지 확인
-- `[View3D] Model created` 로그가 있는지 확인
-- 카메라 위치/스케일이 적절한지 확인 (`View3D.qml`의 `camera` 및 `Model` 설정)
+### Unity 렌더링이 안 보임
+- Unity 프로세스가 실행 중인지 확인
+- Unity 콘솔에서 MediaPipe 데이터 수신 로그 확인
+- Unity에서 GLB 모델이 로드되었는지 확인 (`Assets/Models/Avatar02.glb`)
+- 네트워크 포트가 올바른지 확인 (기본: 12345, 12346)
 
 ### Qt를 찾을 수 없음
 - Qt가 설치되어 있는지 확인: `brew install qt` (macOS)
@@ -135,5 +142,7 @@ QStringList characters = {"캐릭터 1", "캐릭터 2", "캐릭터 3", "캐릭�
 
 - QGst는 macOS에서 잘 작동하지 않을 수 있으므로, OpenCV의 GStreamer/FFmpeg 백엔드를 사용합니다.
 - 얼굴 인식/표정 추출은 **MediaPipe FaceLandmarker (Python)** 를 사용하며, C++에서는 pybind11로 임베딩합니다.
-- 아바타 렌더링은 Qt Quick3D 기반이며, 현재 `resource/assets/Avatar02.glb`를 사용하여 Blendshape 기반 표정 제어를 수행합니다.
+- **아바타 렌더링은 Unity 기반**이며, MediaPipe Blendshape 데이터를 Unity로 전송하여 52개 BlendShape를 모두 적용합니다.
 - 웹캠 / UDP / RTSP 모드 전환 시 `MainWindow`에서 MediaPipe를 항상 `stop → start` 흐름으로 관리하여, 모드 변경 후에도 얼굴 탐지가 안정적으로 재시작되도록 구성되어 있습니다.
+- **카메라는 MainWindow에서만 열고 관리**하며, MediaPipeProcessor는 프레임 데이터만 받아서 처리합니다.
+- Qt Quick3D 관련 코드는 남아있지만, Unity 전환으로 인해 현재는 사용하지 않습니다.
